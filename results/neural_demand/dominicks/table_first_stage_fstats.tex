@@ -1,0 +1,15 @@
+\begin{table}[htbp]
+  \centering
+  \caption{First-Stage Diagnostics --- Hausman Instruments (Dominick's Analgesics)}
+  \label{tab:first_stage_fstats}
+  \begin{tabular}{lccc}
+    \toprule
+    \textbf{Price equation} & \textbf{First-stage $F$} & \textbf{First-stage $R^2$} & \textbf{Partial $R^2$} \\
+    \midrule
+    Aspirin & 43285.80 & 0.645 & 0.603 \\
+    Acetaminophen & 49300.16 & 0.664 & 0.633 \\
+    Ibuprofen & 35854.14 & 0.619 & 0.557 \\
+    \bottomrule
+  \end{tabular}
+  \caption*{OLS first-stage regression of $\ln p_{git}$ on revenue-weighted mean prices in other stores. $F$-statistic tests the joint significance of all $G$ Hausman instruments. Values below 10 indicate weak instruments \citep{staiger1994instrumental}.}
+\end{table}

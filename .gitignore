@@ -1,0 +1,17 @@
+data/
+.idea/*
+.venv/*
+__pycache__/*
+.DS_Store
+results/neural_demand/dominicks/models/*
+results/neural_demand/simulations/models/*
+results/neural_demand/long
+results/neural_demand/paper
+experiments/__pycache__/*
+experiments/neural_demand/__pycache__/*
+experiments/neural_demand/dominicks/__pycache__/*
+experiments/neural_demand/simulations/__pycache__/*
+experiments/dominicks/__pycache__/*
+src/evaluation/__pycache__/*
+src/models/__pycache__/*
+PAPER_CODE_DIFFERENCES.md

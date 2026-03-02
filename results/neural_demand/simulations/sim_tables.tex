@@ -1,0 +1,106 @@
+% ============================================================
+% Neural Demand Paper — Simulation Tables (auto-generated)
+% N_RUNS = 5
+% ============================================================
+
+\begin{table}[htbp]
+  \centering
+  \caption{Post-Shock RMSE by DGP and Model (mean $\pm$ SE, 5 runs)}
+  \label{tab:sim_dgp_recovery}
+  \begin{threeparttable}
+  \begin{tabular}{lcccccc}
+    \toprule
+    \textbf{Model} & \textbf{CES} & \textbf{Quasilinear} & \textbf{Leontief} & \textbf{Stone–Geary} & \textbf{Habit} & \textbf{Endogenous CES} \\
+    \midrule
+    LA-AIDS & $0.00979 \pm 0.00010$ & $0.00003 \pm 0.00000$ & $0.01884 \pm 0.00019$ & $0.00581 \pm 0.00004$ & $0.04625 \pm 0.00116$ & $0.08610 \pm 0.00178$ \\
+    BLP (IV) & $0.02207 \pm 0.00025$ & $0.00577 \pm 0.00000$ & $0.02762 \pm 0.00030$ & $0.00478 \pm 0.00003$ & $0.04771 \pm 0.00118$ & $0.02902 \pm 0.00189$ \\
+    QUAIDS & $0.00978 \pm 0.00012$ & $0.00003 \pm 0.00000$ & $0.01879 \pm 0.00022$ & $0.00576 \pm 0.00005$ & $0.04619 \pm 0.00117$ & $0.08721 \pm 0.00182$ \\
+    Series Estm. & $0.00302 \pm 0.00006$ & $0.00003 \pm 0.00000$ & $0.00319 \pm 0.00002$ & $0.00112 \pm 0.00001$ & $0.04553 \pm 0.00113$ & $0.08696 \pm 0.00248$ \\
+    Linear Demand (Shared) & $0.15411 \pm 0.00030$ & $0.47159 \pm 0.00079$ & $0.09059 \pm 0.00052$ & $0.12343 \pm 0.00012$ & $0.14856 \pm 0.00048$ & $0.16474 \pm 0.00038$ \\
+    Linear Demand (GoodSpec) & $0.15532 \pm 0.00040$ & $0.47185 \pm 0.00076$ & $0.09465 \pm 0.00060$ & $0.12352 \pm 0.00013$ & $0.14935 \pm 0.00052$ & $0.16524 \pm 0.00043$ \\
+    Linear Demand (Orth) & $0.02398 \pm 0.00043$ & $0.00718 \pm 0.00002$ & $0.02658 \pm 0.00046$ & $0.00330 \pm 0.00003$ & $0.04796 \pm 0.00119$ & $0.08629 \pm 0.00120$ \\
+    Neural Demand (static) & $0.00063 \pm 0.00004$ & $0.00001 \pm 0.00000$ & $0.00076 \pm 0.00008$ & $0.00188 \pm 0.00009$ & $0.04565 \pm 0.00129$ & $0.14214 \pm 0.00390$ \\
+    Neural Demand (habit) & $0.00109 \pm 0.00010$ & $0.00001 \pm 0.00000$ & $0.00076 \pm 0.00002$ & $0.00215 \pm 0.00006$ & $0.01969 \pm 0.00033$ & $0.19115 \pm 0.00127$ \\
+    Neural Demand (CF) & $0.00075 \pm 0.00002$ & $0.00001 \pm 0.00000$ & $0.00082 \pm 0.00005$ & $0.00194 \pm 0.00012$ & $0.04548 \pm 0.00122$ & $0.04062 \pm 0.00472$ \\
+    Neural Demand (habit, CF) & $0.00080 \pm 0.00003$ & $0.00001 \pm 0.00000$ & $0.00086 \pm 0.00005$ & $0.00186 \pm 0.00005$ & $0.01637 \pm 0.00016$ & $0.04794 \pm 0.00299$ \\
+    Ground Truth & $0.00000 \pm 0.00000$ & $0.00000 \pm 0.00000$ & $0.00000 \pm 0.00000$ & $0.00000 \pm 0.00000$ & $0.00000 \pm 0.00000$ & $0.00000 \pm 0.00000$ \\
+    \bottomrule
+  \end{tabular}
+  \begin{tablenotes}\small
+    \item Post-shock: 20\% increase in price of good 1.
+  \end{tablenotes}
+  \end{threeparttable}
+\end{table}
+
+\begin{table}[htbp]
+  \centering
+  \caption{Own-Price Quantity Elasticities — Simulation (CES DGP)}
+  \label{tab:sim_elasticities}
+  \begin{threeparttable}
+  \begin{tabular}{lccc}
+    \toprule
+    \textbf{Model} & $\hat{\varepsilon}_{00}$ & $\hat{\varepsilon}_{11}$ & $\hat{\varepsilon}_{22}$ \\
+    \midrule
+    LA-AIDS & $-1.422 \pm 0.001$ & $-1.487 \pm 0.001$ & $-1.697 \pm 0.003$ \\
+    BLP (IV) & $-1.485 \pm 0.004$ & $-1.662 \pm 0.005$ & $-1.787 \pm 0.004$ \\
+    QUAIDS & $-1.421 \pm 0.001$ & $-1.487 \pm 0.001$ & $-1.699 \pm 0.003$ \\
+    Series Estm. & $-1.424 \pm 0.001$ & $-1.478 \pm 0.001$ & $-1.713 \pm 0.001$ \\
+    Linear Demand (Shared) & $-1.522 \pm 0.008$ & $-1.613 \pm 0.012$ & $-1.519 \pm 0.013$ \\
+    Linear Demand (GoodSpec) & $-1.560 \pm 0.007$ & $-1.703 \pm 0.011$ & $-1.555 \pm 0.014$ \\
+    Linear Demand (Orth) & $-1.515 \pm 0.006$ & $-1.688 \pm 0.006$ & $-1.838 \pm 0.004$ \\
+    Neural Demand (static) & $-1.440 \pm 0.002$ & $-1.490 \pm 0.001$ & $-1.718 \pm 0.001$ \\
+    Neural Demand (habit) & $-1.441 \pm 0.000$ & $-1.493 \pm 0.001$ & $-1.716 \pm 0.001$ \\
+    Neural Demand (CF) & $-1.441 \pm 0.001$ & $-1.491 \pm 0.001$ & $-1.719 \pm 0.002$ \\
+    Neural Demand (habit, CF) & $-1.432 \pm 0.002$ & $-1.480 \pm 0.003$ & $-1.695 \pm 0.002$ \\
+    Ground Truth & $-1.438 \pm 0.001$ & $-1.489 \pm 0.001$ & $-1.710 \pm 0.001$ \\
+    \bottomrule
+  \end{tabular}
+  \end{threeparttable}
+\end{table}
+
+\begin{table}[htbp]
+  \centering
+  \caption{Compensating Variation — Simulation (CES DGP, 20\% shock)}
+  \label{tab:sim_welfare}
+  \begin{threeparttable}
+  \begin{tabular}{lcc}
+    \toprule
+    \textbf{Model} & \textbf{CV} & \textbf{Error vs Truth (\%)} \\
+    \midrule
+    LA-AIDS & $-122.0925 \pm 0.2934$ & 0.4\% \\
+    BLP (IV) & $-120.4891 \pm 0.3883$ & 1.7\% \\
+    QUAIDS & $-122.1117 \pm 0.3041$ & 0.4\% \\
+    Series Estm. & $-122.8321 \pm 0.2975$ & 0.2\% \\
+    Linear Demand (Shared) & $-92.5375 \pm 0.2241$ & 24.5\% \\
+    Linear Demand (GoodSpec) & $-92.0899 \pm 0.2394$ & 24.9\% \\
+    Linear Demand (Orth) & $-121.3341 \pm 0.4326$ & 1.1\% \\
+    Neural Demand (static) & $-122.6129 \pm 0.2892$ & 0.0\% \\
+    Neural Demand (habit) & $-122.5390 \pm 0.3189$ & 0.1\% \\
+    Neural Demand (CF) & $-122.6109 \pm 0.2814$ & 0.0\% \\
+    Neural Demand (habit, CF) & $-122.6333 \pm 0.3410$ & 0.5\% \\
+    Ground Truth & $-122.6243 \pm 0.2916$ & --- \\
+    \bottomrule
+  \end{tabular}
+  \end{threeparttable}
+\end{table}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.85\linewidth]{results/neural_demand/simulations/figures/fig_demand_curves_CES.pdf}
+  \caption{Demand Curves — CES DGP.  Shaded bands = ±1 SE across runs.}
+  \label{fig:sim_demand_ces}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.85\linewidth]{results/neural_demand/simulations/figures/fig_dgp_robustness.pdf}
+  \caption{DGP Robustness: Out-of-Sample RMSE across Five DGPs.}
+  \label{fig:sim_dgp_robustness}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.85\linewidth]{results/neural_demand/simulations/figures/fig_observed_vs_predicted.pdf}
+  \caption{Observed vs.\ Predicted Budget Shares — CES DGP.}
+  \label{fig:sim_obs_pred}
+\end{figure}
