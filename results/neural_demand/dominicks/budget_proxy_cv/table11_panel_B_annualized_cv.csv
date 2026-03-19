@@ -1,0 +1,6 @@
+model,annualized_cv_freq4,annualized_cv_freq6,gap_pct_vs_static_freq4
+Neural Demand (static),-93.78604992088779,-140.6790748813317,
+Neural Demand (habit),-93.60998469777685,-140.41497704666529,
+"Neural Demand (habit, FE)",-93.76362875045331,-140.64544312567995,
+"Neural Demand (habit, CF)",-92.68521450622953,-139.0278217593443,
+Static-Habit gap,0.17606522311093897,0.26409783466640846,0.1877307160920594

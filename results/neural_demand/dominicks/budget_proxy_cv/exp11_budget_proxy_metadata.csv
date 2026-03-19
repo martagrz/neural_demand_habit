@@ -1,0 +1,2 @@
+old_income_mean,new_nondurable_mean_raw,new_nondurable_scale_factor,train_total,test_total,train_dropped_invalid_income_or_custcoun,test_dropped_invalid_income_or_custcoun,note
+11.14781490015361,12.285566545327548,0.9073911942948494,28644,4287,494,350,Income proxy changed to per-customer budget; models retrained from scratch.

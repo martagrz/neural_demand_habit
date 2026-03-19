@@ -1,0 +1,6 @@
+model,cv_percustomer_mean,cv_percustomer_se_store_cluster,gap_pct_vs_static
+Neural Demand (static),-23.446512480221948,0.4122547946176498,
+Neural Demand (habit),-23.402496174444213,0.4209478226440621,
+"Neural Demand (habit, FE)",-23.440907187613327,0.3746732848482956,
+"Neural Demand (habit, CF)",-23.171303626557382,0.40643311340731525,
+Static-Habit gap,0.04401630577773474,,0.1877307160920594

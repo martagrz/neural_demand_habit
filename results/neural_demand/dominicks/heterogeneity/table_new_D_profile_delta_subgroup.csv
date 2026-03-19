@@ -1,0 +1,5 @@
+Group,delta_hat,IS_lower,IS_upper,IS_width
+Low income,0.3,0.3,0.3,0.0
+High income,0.8,0.8,0.8,0.0
+High poverty,0.8,0.6,0.8,0.20000000000000007
+Avid shoppers,0.6,0.6,0.8,0.20000000000000007

@@ -1,0 +1,6 @@
+model,cv_aggregate_mean,cv_aggregate_se_store_cluster,gap_pct_vs_static
+Neural Demand (static),-421254.3202068772,12665.556295905008,
+Neural Demand (habit),-420220.20057679387,12635.645720265262,
+"Neural Demand (habit, FE)",-421439.05252108665,12368.430344747367,
+"Neural Demand (habit, CF)",-416692.18326445634,12646.470596745434,
+Static-Habit gap,1034.1196300833253,,0.24548582186064494

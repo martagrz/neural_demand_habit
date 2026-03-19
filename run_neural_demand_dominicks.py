@@ -14,7 +14,7 @@ Usage
   --weekly     Path to the Dominick's weekly movement file (WBER).
   --upc        Path to the UPC catalogue file.
   --fast       Reduced N_RUNS and training epochs for quick testing.
-  --exp        Subset of experiments to run: 01 02 03 04 05 06 07 08 09 (default: all).
+  --exp        Subset of experiments to run: 01 02 03 04 05 06 07 08 09 12 (default: all).
 
 Outputs are written to
   results/neural_demand/dominicks/
@@ -132,7 +132,7 @@ def _parse_args():
     p.add_argument("--verbose", action="store_true",
                    help="Verbose training logs (default: quiet; prints only KL_min summaries)")
     p.add_argument("--exp", nargs="+", type=str, default=None,
-                   help="Experiments to run: 01 02 03 04 05 06 07 08 09 (default: all)")
+                   help="Experiments to run: 01 02 03 04 05 06 07 08 09 12 (default: all)")
     return p.parse_args()
 
 
@@ -237,6 +237,27 @@ def _run_exp09(splits, cfg):
     return run(splits, cfg)
 
 
+def _run_exp12(splits, cfg):
+    from argparse import Namespace
+    from experiments.dominicks.exp12_per_item_blp_scaling import run
+
+    data_dir = os.path.dirname(cfg.get("weekly_path", "data/wana.csv")) or "data"
+    args = Namespace(
+        weekly=cfg.get("weekly_path", "data/wana.csv"),
+        upc=cfg.get("upc_path", "data/upcana.csv"),
+        data_dir=data_dir,
+        fast=bool(cfg.get("N_RUNS", 5) <= 2),
+        force_retrain=bool(cfg.get("force_retrain", False)),
+        verbose=bool(cfg.get("verbose", False)),
+        test_cutoff=int(cfg.get("test_cutoff", 351)),
+        min_store_weeks=int(cfg.get("min_store_wks", 20)),
+        seed=42,
+        goods_grid="8,12,16,24,32",
+        n_upc_cap=0,
+    )
+    return run(args)
+
+
 EXPERIMENTS = {
     "01": ("Predictive Accuracy",        _run_exp01),
     "02": ("Elasticities",               _run_exp02),
@@ -247,6 +268,7 @@ EXPERIMENTS = {
     "07": ("Full Model Figures",         _run_exp07),
     "08": ("First-Stage Diagnostics",    _run_exp08),
     "09": ("Regularity Dashboard",       _run_exp09),
+    "12": ("UPC-level BLP vs NDS",       _run_exp12),
 }
 
 
