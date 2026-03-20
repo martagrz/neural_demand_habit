@@ -5,7 +5,7 @@ This experiment implements:
 1) UPC-level analgesics panel construction (all UPCs available in upcana/wana),
 2) train/test evaluation using a week split,
 3) BLP logit-IV with Hausman instruments and market size estimated from footfall,
-4) Neural Demand benchmarks (static, habit, FE, CF),
+4) Neural Demand benchmarks (static, habit, FE, CF, habit FE, habit CF, habit FE CF),
 5) scaling comparison across number of UPCs, reporting fit-time and test RMSE.
 """
 
@@ -28,7 +28,7 @@ from run_neural_demand_dominicks import BASE_CFG, FAST_CFG
 from src.models.blp_logit_iv import BLPLogitIV
 from src.models.dominicks import cf_first_stage, hausman_iv
 from src.models.dominicks_train import train_dominicks as _train
-from src.models.mdp_neural_irl import HabitND
+from src.models.mdp_neural_irl import HabitND, HabitND_FE
 from src.models.neural_irl import StaticND, StaticND_FE
 
 
@@ -44,6 +44,7 @@ class Exp12Cfg:
     force_retrain: bool
     verbose: bool
     use_fast: bool
+    full_only: bool
 
 
 def _build_cfg(args) -> tuple[dict, Exp12Cfg]:
@@ -82,6 +83,7 @@ def _build_cfg(args) -> tuple[dict, Exp12Cfg]:
         force_retrain=bool(args.force_retrain),
         verbose=bool(args.verbose),
         use_fast=bool(args.fast),
+        full_only=bool(args.full_only),
     )
     return cfg, ecfg
 
@@ -109,8 +111,13 @@ def _load_footfall(data_dir: str) -> pd.DataFrame:
 
 
 def _build_upc_panel(cfg: dict, footfall_sw: pd.DataFrame) -> pd.DataFrame:
+    print("[exp12] Loading weekly and UPC files...", flush=True)
     wdf = pd.read_csv(cfg["weekly_path"])
     udf = pd.read_csv(cfg["upc_path"])
+    print(
+        f"[exp12] Raw rows: weekly={len(wdf):,}, upc_catalog={len(udf):,}",
+        flush=True,
+    )
 
     keep_upc_cols = [c for c in ["UPC", "DESCRIP", "SIZE"] if c in udf.columns]
     udf = udf[keep_upc_cols].drop_duplicates(subset=["UPC"])
@@ -134,6 +141,7 @@ def _build_upc_panel(cfg: dict, footfall_sw: pd.DataFrame) -> pd.DataFrame:
             return float(np.average(pos["UNIT_PX"], weights=np.maximum(pos["UNITS"], 1e-8)))
         return float(np.nanmean(g["UNIT_PX"]))
 
+    print("[exp12] Aggregating to store-week-UPC panel...", flush=True)
     upc_sw = (
         merged.groupby(["STORE", "WEEK", "UPC"], as_index=False)
         .apply(
@@ -155,6 +163,11 @@ def _build_upc_panel(cfg: dict, footfall_sw: pd.DataFrame) -> pd.DataFrame:
     store_n = upc_sw.groupby("STORE")["WEEK"].nunique()
     good_stores = store_n[store_n >= int(cfg["min_store_wks"])].index
     upc_sw = upc_sw[upc_sw["STORE"].isin(good_stores)].copy()
+    print(
+        f"[exp12] Panel ready: rows={len(upc_sw):,}, stores={upc_sw['STORE'].nunique()}, "
+        f"weeks={upc_sw['WEEK'].nunique()}, upcs={upc_sw['UPC'].nunique()}",
+        flush=True,
+    )
     return upc_sw
 
 
@@ -313,7 +326,38 @@ def _pred_habit(model: HabitND, p: np.ndarray, y: np.ndarray, xb: np.ndarray, qp
     return wp.cpu().numpy()
 
 
-def _fit_models(arr: dict, cfg: dict, seed: int, run_extended: bool) -> dict:
+def _pred_habit_fe(
+    model: HabitND_FE,
+    p: np.ndarray,
+    y: np.ndarray,
+    xb: np.ndarray,
+    qp: np.ndarray,
+    store_idx: np.ndarray,
+    cfg: dict,
+    v_hat=None,
+) -> np.ndarray:
+    dev = cfg["device"]
+    with torch.no_grad():
+        lp = torch.log(torch.tensor(np.maximum(p, 1e-8), dtype=torch.float32, device=dev))
+        ly = torch.log(torch.tensor(np.maximum(y, 1e-8), dtype=torch.float32, device=dev)).unsqueeze(1)
+        xbt = torch.tensor(xb, dtype=torch.float32, device=dev)
+        qpt = torch.tensor(qp, dtype=torch.float32, device=dev)
+        si = torch.tensor(store_idx, dtype=torch.long, device=dev)
+        if v_hat is None:
+            wp = model(lp, ly, xbt, qpt, si)
+        else:
+            vh = torch.tensor(v_hat, dtype=torch.float32, device=dev)
+            wp = model(lp, ly, xbt, qpt, si, v_hat=vh)
+    return wp.cpu().numpy()
+
+
+def _fit_models(
+    arr: dict,
+    cfg: dict,
+    seed: int,
+    run_extended: bool,
+    fast_only_habit_fe_cf: bool = False,
+) -> dict:
     np.random.seed(seed)
     torch.manual_seed(seed)
 
@@ -328,8 +372,55 @@ def _fit_models(arr: dict, cfg: dict, seed: int, run_extended: bool) -> dict:
     qp_tr, qp_te = arr["qp"][tr], arr["qp"][te]
     sidx_tr, sidx_te = arr["store_idx"][tr], arr["store_idx"][te]
     n_goods = p_tr.shape[1]
+    model_prefix = f"[exp12][K={n_goods}]"
+
+    log_p_tr = np.log(np.maximum(p_tr, 1e-8))
+    v_hat_tr, _ = cf_first_stage(log_p_tr, z_tr)
+    vh_te_zeros = np.zeros_like(p_te, dtype=np.float32)
+
+    if fast_only_habit_fe_cf:
+        print(f"{model_prefix} fitting Neural Demand (habit, FE, CF)...", flush=True)
+        t0 = time.perf_counter()
+        mdp_fe_cf = HabitND_FE(
+            hidden_dim=cfg["mdp_hidden"],
+            n_goods=n_goods,
+            delta_init=float(cfg.get("habit_decay", 0.7)),
+            n_stores=int(arr["n_stores"]),
+            emb_dim=8,
+            n_cf=n_goods,
+        )
+        mdp_fe_cf, _ = _train(
+            mdp_fe_cf,
+            p_tr,
+            y_tr,
+            w_tr,
+            "mdp",
+            cfg,
+            xb_prev_tr=xb_tr,
+            q_prev_tr=qp_tr,
+            store_idx_tr=sidx_tr,
+            v_hat_tr=v_hat_tr,
+            tag=f"Exp12_HabitND_FE_CF_G{n_goods}_seed{seed}",
+        )
+        t_fit = time.perf_counter() - t0
+        mdp_fe_cf_pred = _pred_habit_fe(
+            mdp_fe_cf, p_te, y_te, xb_te, qp_te, sidx_te, cfg, v_hat=vh_te_zeros
+        )
+        rmse = _rmse(w_te, mdp_fe_cf_pred)
+        print(
+            f"{model_prefix} done Neural Demand (habit, FE, CF): "
+            f"time={t_fit:.1f}s rmse={rmse:.6f}",
+            flush=True,
+        )
+        return {
+            "Neural Demand (habit, FE, CF)": {
+                "rmse": rmse,
+                "fit_time_sec": float(t_fit),
+            }
+        }
 
     # BLP (IV) benchmark.
+    print(f"{model_prefix} fitting BLP (IV)...", flush=True)
     t0 = time.perf_counter()
     blp = BLPLogitIV().fit(p_tr, mw_tr, z_tr, verbose=False)
     t_blp = time.perf_counter() - t0
@@ -338,8 +429,13 @@ def _fit_models(arr: dict, cfg: dict, seed: int, run_extended: bool) -> dict:
     out = {
         "BLP (IV)": {"rmse": _rmse(w_te, blp_pred_cond), "fit_time_sec": float(t_blp)}
     }
+    print(
+        f"{model_prefix} done BLP (IV): time={t_blp:.1f}s rmse={out['BLP (IV)']['rmse']:.6f}",
+        flush=True,
+    )
 
     # Neural Demand (static) used in scaling comparison.
+    print(f"{model_prefix} fitting Neural Demand (static)...", flush=True)
     t0 = time.perf_counter()
     nirl = StaticND(hidden_dim=cfg["nirl_hidden"], n_goods=n_goods)
     nirl, _ = _train(
@@ -354,11 +450,17 @@ def _fit_models(arr: dict, cfg: dict, seed: int, run_extended: bool) -> dict:
     t_nirl = time.perf_counter() - t0
     nirl_pred = _pred_static(nirl, p_te, y_te, cfg)
     out["Neural Demand (static)"] = {"rmse": _rmse(w_te, nirl_pred), "fit_time_sec": float(t_nirl)}
+    print(
+        f"{model_prefix} done Neural Demand (static): "
+        f"time={t_nirl:.1f}s rmse={out['Neural Demand (static)']['rmse']:.6f}",
+        flush=True,
+    )
 
     if not run_extended:
         return out
 
     # Habit
+    print(f"{model_prefix} fitting Neural Demand (habit)...", flush=True)
     t0 = time.perf_counter()
     mdp = HabitND(hidden_dim=cfg["mdp_hidden"], n_goods=n_goods, delta_init=float(cfg.get("habit_decay", 0.7)))
     mdp, _ = _train(
@@ -375,8 +477,14 @@ def _fit_models(arr: dict, cfg: dict, seed: int, run_extended: bool) -> dict:
     t_mdp = time.perf_counter() - t0
     mdp_pred = _pred_habit(mdp, p_te, y_te, xb_te, qp_te, cfg)
     out["Neural Demand (habit)"] = {"rmse": _rmse(w_te, mdp_pred), "fit_time_sec": float(t_mdp)}
+    print(
+        f"{model_prefix} done Neural Demand (habit): "
+        f"time={t_mdp:.1f}s rmse={out['Neural Demand (habit)']['rmse']:.6f}",
+        flush=True,
+    )
 
     # FE
+    print(f"{model_prefix} fitting Neural Demand (FE)...", flush=True)
     t0 = time.perf_counter()
     nirl_fe = StaticND_FE(
         hidden_dim=cfg["nirl_hidden"],
@@ -397,10 +505,14 @@ def _fit_models(arr: dict, cfg: dict, seed: int, run_extended: bool) -> dict:
     t_fe = time.perf_counter() - t0
     fe_pred = _pred_fe(nirl_fe, p_te, y_te, sidx_te, cfg)
     out["Neural Demand (FE)"] = {"rmse": _rmse(w_te, fe_pred), "fit_time_sec": float(t_fe)}
+    print(
+        f"{model_prefix} done Neural Demand (FE): "
+        f"time={t_fe:.1f}s rmse={out['Neural Demand (FE)']['rmse']:.6f}",
+        flush=True,
+    )
 
     # CF (static + control function residuals).
-    log_p_tr = np.log(np.maximum(p_tr, 1e-8))
-    v_hat_tr, _ = cf_first_stage(log_p_tr, z_tr)
+    print(f"{model_prefix} fitting Neural Demand (CF)...", flush=True)
     t0 = time.perf_counter()
     nirl_cf = StaticND(hidden_dim=cfg["nirl_hidden"], n_goods=n_goods, n_cf=n_goods)
     nirl_cf, _ = _train(
@@ -414,20 +526,135 @@ def _fit_models(arr: dict, cfg: dict, seed: int, run_extended: bool) -> dict:
         tag=f"Exp12_StaticND_CF_G{n_goods}_seed{seed}",
     )
     t_cf = time.perf_counter() - t0
-    vh_te_zeros = np.zeros_like(p_te, dtype=np.float32)
     cf_pred = _pred_static(nirl_cf, p_te, y_te, cfg, v_hat=vh_te_zeros)
     out["Neural Demand (CF)"] = {"rmse": _rmse(w_te, cf_pred), "fit_time_sec": float(t_cf)}
+    print(
+        f"{model_prefix} done Neural Demand (CF): "
+        f"time={t_cf:.1f}s rmse={out['Neural Demand (CF)']['rmse']:.6f}",
+        flush=True,
+    )
+
+    # Habit + FE
+    print(f"{model_prefix} fitting Neural Demand (habit, FE)...", flush=True)
+    t0 = time.perf_counter()
+    mdp_fe = HabitND_FE(
+        hidden_dim=cfg["mdp_hidden"],
+        n_goods=n_goods,
+        delta_init=float(cfg.get("habit_decay", 0.7)),
+        n_stores=int(arr["n_stores"]),
+        emb_dim=8,
+    )
+    mdp_fe, _ = _train(
+        mdp_fe,
+        p_tr,
+        y_tr,
+        w_tr,
+        "mdp",
+        cfg,
+        xb_prev_tr=xb_tr,
+        q_prev_tr=qp_tr,
+        store_idx_tr=sidx_tr,
+        tag=f"Exp12_HabitND_FE_G{n_goods}_seed{seed}",
+    )
+    t_mdp_fe = time.perf_counter() - t0
+    mdp_fe_pred = _pred_habit_fe(mdp_fe, p_te, y_te, xb_te, qp_te, sidx_te, cfg)
+    out["Neural Demand (habit, FE)"] = {"rmse": _rmse(w_te, mdp_fe_pred), "fit_time_sec": float(t_mdp_fe)}
+    print(
+        f"{model_prefix} done Neural Demand (habit, FE): "
+        f"time={t_mdp_fe:.1f}s rmse={out['Neural Demand (habit, FE)']['rmse']:.6f}",
+        flush=True,
+    )
+
+    # Habit + CF
+    print(f"{model_prefix} fitting Neural Demand (habit, CF)...", flush=True)
+    t0 = time.perf_counter()
+    mdp_cf = HabitND(
+        hidden_dim=cfg["mdp_hidden"],
+        n_goods=n_goods,
+        delta_init=float(cfg.get("habit_decay", 0.7)),
+        n_cf=n_goods,
+    )
+    mdp_cf, _ = _train(
+        mdp_cf,
+        p_tr,
+        y_tr,
+        w_tr,
+        "mdp",
+        cfg,
+        xb_prev_tr=xb_tr,
+        q_prev_tr=qp_tr,
+        v_hat_tr=v_hat_tr,
+        tag=f"Exp12_HabitND_CF_G{n_goods}_seed{seed}",
+    )
+    t_mdp_cf = time.perf_counter() - t0
+    mdp_cf_pred = _pred_habit(mdp_cf, p_te, y_te, xb_te, qp_te, cfg, v_hat=vh_te_zeros)
+    out["Neural Demand (habit, CF)"] = {"rmse": _rmse(w_te, mdp_cf_pred), "fit_time_sec": float(t_mdp_cf)}
+    print(
+        f"{model_prefix} done Neural Demand (habit, CF): "
+        f"time={t_mdp_cf:.1f}s rmse={out['Neural Demand (habit, CF)']['rmse']:.6f}",
+        flush=True,
+    )
+
+    # Habit + FE + CF
+    print(f"{model_prefix} fitting Neural Demand (habit, FE, CF)...", flush=True)
+    t0 = time.perf_counter()
+    mdp_fe_cf = HabitND_FE(
+        hidden_dim=cfg["mdp_hidden"],
+        n_goods=n_goods,
+        delta_init=float(cfg.get("habit_decay", 0.7)),
+        n_stores=int(arr["n_stores"]),
+        emb_dim=8,
+        n_cf=n_goods,
+    )
+    mdp_fe_cf, _ = _train(
+        mdp_fe_cf,
+        p_tr,
+        y_tr,
+        w_tr,
+        "mdp",
+        cfg,
+        xb_prev_tr=xb_tr,
+        q_prev_tr=qp_tr,
+        store_idx_tr=sidx_tr,
+        v_hat_tr=v_hat_tr,
+        tag=f"Exp12_HabitND_FE_CF_G{n_goods}_seed{seed}",
+    )
+    t_mdp_fe_cf = time.perf_counter() - t0
+    mdp_fe_cf_pred = _pred_habit_fe(
+        mdp_fe_cf, p_te, y_te, xb_te, qp_te, sidx_te, cfg, v_hat=vh_te_zeros
+    )
+    out["Neural Demand (habit, FE, CF)"] = {
+        "rmse": _rmse(w_te, mdp_fe_cf_pred),
+        "fit_time_sec": float(t_mdp_fe_cf),
+    }
+    print(
+        f"{model_prefix} done Neural Demand (habit, FE, CF): "
+        f"time={t_mdp_fe_cf:.1f}s rmse={out['Neural Demand (habit, FE, CF)']['rmse']:.6f}",
+        flush=True,
+    )
     return out
 
 
 def _plot_scaling(df: pd.DataFrame, fig_dir: str) -> None:
+    if df.empty:
+        return
+    model_order = list(df["model"].drop_duplicates())
+    color_cycle = [
+        "#8E24AA", "#1E88E5", "#00897B", "#1565C0", "#283593", "#1B5E20",
+        "#E53935", "#FB8C00",
+    ]
+    color_map = {m: color_cycle[i % len(color_cycle)] for i, m in enumerate(model_order)}
+
     # Time plot.
     fig, ax = plt.subplots(figsize=(8, 5))
-    for model, color in [("BLP (IV)", "#8E24AA"), ("Neural Demand (static)", "#1E88E5")]:
+    for model in model_order:
         d = df[df["model"] == model].sort_values("n_goods")
         if len(d) == 0:
             continue
-        ax.plot(d["n_goods"], d["fit_time_sec"], marker="o", lw=2.0, color=color, label=model)
+        ax.plot(
+            d["n_goods"], d["fit_time_sec"], marker="o", lw=2.0,
+            color=color_map[model], label=model
+        )
     ax.set_xlabel("Number of UPCs (goods)")
     ax.set_ylabel("Fit time (seconds)")
     ax.set_title("Fit Time vs Number of Goods")
@@ -440,11 +667,14 @@ def _plot_scaling(df: pd.DataFrame, fig_dir: str) -> None:
 
     # RMSE plot.
     fig, ax = plt.subplots(figsize=(8, 5))
-    for model, color in [("BLP (IV)", "#8E24AA"), ("Neural Demand (static)", "#1E88E5")]:
+    for model in model_order:
         d = df[df["model"] == model].sort_values("n_goods")
         if len(d) == 0:
             continue
-        ax.plot(d["n_goods"], d["rmse_test"], marker="o", lw=2.0, color=color, label=model)
+        ax.plot(
+            d["n_goods"], d["rmse_test"], marker="o", lw=2.0,
+            color=color_map[model], label=model
+        )
     ax.set_xlabel("Number of UPCs (goods)")
     ax.set_ylabel("Test RMSE (conditional share)")
     ax.set_title("Test RMSE vs Number of Goods")
@@ -461,7 +691,18 @@ def run(args):
     np.random.seed(ecfg.seed)
     torch.manual_seed(ecfg.seed)
 
+    print("[exp12] Starting experiment...", flush=True)
+    print(
+        f"[exp12] settings: fast={ecfg.use_fast}, full_only={ecfg.full_only}, "
+        f"seed={ecfg.seed}, test_cutoff={ecfg.test_cutoff}",
+        flush=True,
+    )
     footfall_sw = _load_footfall(args.data_dir)
+    print(
+        f"[exp12] Footfall loaded: rows={len(footfall_sw):,}, "
+        f"stores={footfall_sw['STORE'].nunique()}, weeks={footfall_sw['WEEK'].nunique()}",
+        flush=True,
+    )
     upc_sw = _build_upc_panel(cfg, footfall_sw)
 
     # UPC ranking by train-period revenue.
@@ -476,21 +717,35 @@ def run(args):
         ranked_upcs = ranked_upcs[: ecfg.n_upc_cap]
     if len(ranked_upcs) < 5:
         raise ValueError("Not enough UPCs with train-period sales for Exp 12.")
+    print(f"[exp12] Ranked UPCs available: {len(ranked_upcs)}", flush=True)
 
     full_goods = len(ranked_upcs)
-    goods_grid = [g for g in ecfg.goods_grid if g <= len(ranked_upcs) and g >= 5]
-    if full_goods not in goods_grid:
-        goods_grid.append(full_goods)
-    goods_grid = sorted(set(goods_grid))
+    if ecfg.full_only:
+        goods_grid = [full_goods]
+    else:
+        goods_grid = [g for g in ecfg.goods_grid if g <= len(ranked_upcs) and g >= 5]
+        if full_goods not in goods_grid:
+            goods_grid.append(full_goods)
+        goods_grid = sorted(set(goods_grid))
 
     scaling_rows = []
     full_benchmark_rows = []
+    print(f"[exp12] Goods grid to run: {goods_grid}", flush=True)
+    if ecfg.use_fast:
+        print("[exp12] Fast mode: fitting only Neural Demand (habit, FE, CF).", flush=True)
 
     for k in goods_grid:
+        print(f"[exp12] Preparing arrays for K={k}...", flush=True)
         selected = ranked_upcs[:k]
         arr = _build_selected_arrays(upc_sw, selected, cfg)
         run_extended = (k == max(goods_grid))
-        fit = _fit_models(arr, cfg, seed=ecfg.seed, run_extended=run_extended)
+        fit = _fit_models(
+            arr,
+            cfg,
+            seed=ecfg.seed,
+            run_extended=run_extended,
+            fast_only_habit_fe_cf=bool(ecfg.use_fast),
+        )
 
         for model_name, vals in fit.items():
             row = {
@@ -527,6 +782,7 @@ def run(args):
                 "n_total_ranked_upcs": int(len(ranked_upcs)),
                 "goods_grid": ",".join(str(x) for x in goods_grid),
                 "max_goods_for_full_benchmark": int(max(goods_grid)),
+                "full_only": bool(ecfg.full_only),
                 "test_cutoff": int(ecfg.test_cutoff),
                 "min_store_weeks": int(ecfg.min_store_weeks),
                 "seed": int(ecfg.seed),
@@ -573,6 +829,11 @@ def _parse_args():
         type=int,
         default=0,
         help="Max top-ranked UPCs to consider; 0 means all UPCs",
+    )
+    p.add_argument(
+        "--full-only",
+        action="store_true",
+        help="Run only the full-UPC benchmark (skip goods-grid sweep)",
     )
     return p.parse_args()
 

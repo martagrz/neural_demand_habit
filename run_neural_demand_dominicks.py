@@ -252,8 +252,9 @@ def _run_exp12(splits, cfg):
         test_cutoff=int(cfg.get("test_cutoff", 351)),
         min_store_weeks=int(cfg.get("min_store_wks", 20)),
         seed=42,
-        goods_grid="8,12,16,24,32",
+        goods_grid="8,12,16,24,32", #641 in total 
         n_upc_cap=0,
+        full_only=True,
     )
     return run(args)
 
