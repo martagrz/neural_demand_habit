@@ -1,6 +1,6 @@
 % ============================================================
 % Neural Demand — table_dom_predictive_accuracy (auto-generated)
-% N_RUNS = 5
+% N_RUNS = 2
 % ============================================================
 
 \begin{table}[htbp]
@@ -13,23 +13,23 @@
     \textbf{Model} & \textbf{RMSE} & \textbf{MAE} & \textbf{KL Div.} \\
     \midrule
     LA-AIDS & $0.07069$ & $0.05593$ & {---} \\
-    BLP (IV) & $0.07766$ & $0.05991$ & {---} \\
-    QUAIDS & $0.06956$ & $0.05519 \pm 0.00000$ & {---} \\
+    Logit-IV & $0.07766$ & $0.05991$ & {---} \\
+    QUAIDS & $0.06956$ & $0.05519$ & {---} \\
     Series Est. & $0.06514$ & $0.05077$ & {---} \\
-    Linear Demand (Shared) & $0.09201$ & $0.07361$ & {---} \\
-    Linear Demand (GoodSpec) & $0.09197$ & $0.07356$ & {---} \\
-    Linear Demand (Orth) & $0.08662$ & $0.07046$ & {---} \\
-    Neural Demand (static) & $0.06521 \pm 0.00037$ & $0.05047 \pm 0.00031$ & {---} \\
-    Neural Demand (window) & $0.04872 \pm 0.00004$ & $0.03661 \pm 0.00004$ & {---} \\
-    Neural Demand (habit) & $0.04762 \pm 0.00007$ & $0.03574 \pm 0.00008$ & {---} \\
-    Neural Demand (FE) & $0.05902 \pm 0.00021$ & $0.04506 \pm 0.00019$ & {---} \\
-    Neural Demand (habit, FE) & $0.04763 \pm 0.00007$ & $0.03583 \pm 0.00005$ & {---} \\
-    Neural Demand (CF) & $0.06806 \pm 0.00020$ & $0.05196 \pm 0.00010$ & {---} \\
-    Neural Demand (habit, CF) & $0.04751 \pm 0.00015$ & $0.03572 \pm 0.00008$ & {---} \\
+    Linear Demand (Shared) & $0.09237$ & $0.07426$ & {---} \\
+    Linear Demand (GoodSpec) & $0.09242$ & $0.07436$ & {---} \\
+    Linear Demand (Orth) & $0.09291$ & $0.07485$ & {---} \\
+    Neural Demand (static) & $0.08572 \pm 0.00113$ & $0.06731 \pm 0.00100$ & {---} \\
+    Neural Demand (window) & $0.06655 \pm 0.00409$ & $0.05152 \pm 0.00330$ & {---} \\
+    Neural Demand (habit) & $0.06612 \pm 0.00290$ & $0.05105 \pm 0.00239$ & {---} \\
+    Neural Demand (FE) & $0.08523 \pm 0.00035$ & $0.06650 \pm 0.00026$ & {---} \\
+    Neural Demand (habit, FE) & $0.07794 \pm 0.00062$ & $0.06087 \pm 0.00062$ & {---} \\
+    Neural Demand (CF) & $0.08642 \pm 0.00035$ & $0.06751 \pm 0.00039$ & {---} \\
+    Neural Demand (habit, CF) & $0.07023 \pm 0.00109$ & $0.05429 \pm 0.00084$ & {---} \\
     \bottomrule
   \end{tabular}
   \begin{tablenotes}\small
-    \item Mean $\pm$ SE over 5 run(s). RMSE and MAE computed on held-out test weeks.
+    \item Mean $\pm$ SE over 2 run(s). RMSE and MAE computed on held-out test weeks.
   \end{tablenotes}
   \end{threeparttable}
 \end{table}

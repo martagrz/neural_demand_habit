@@ -161,25 +161,37 @@ class WindowND(nn.Module):
         """x : (B, in_dim) — pre-built window feature vector."""
         return torch.softmax(self.net(x), dim=1)
 
-    def _jacobian_symmetry_penalty(self, x):
-        """Slutsky symmetry w.r.t. the *current* log prices (first G dims)."""
+    def _slutsky_symmetry_penalty(self, x):
+        """True Slutsky symmetry penalty with income-effect correction.
+
+        Penalizes asymmetry of M_ij = ∂w_i/∂log p_j + w_j · ∂w_i/∂log y,
+        where log prices occupy the first G dims of x and log income is dim G.
+        """
         G = self.n_goods
         x_d = x.detach().clone().requires_grad_(True)
-        w = self.forward(x_d)
-        rows = [
+        w = self.forward(x_d)  # (B, G)
+        # Price Jacobian: J[b, i, j] = ∂w_i/∂log p_j  (j indexes first G dims)
+        J = torch.stack([
             torch.autograd.grad(
                 w[:, i].sum(), x_d, create_graph=True, retain_graph=True
-            )[0][:, :G].unsqueeze(2)
+            )[0][:, :G]
             for i in range(G)
-        ]
-        J = torch.cat(rows, dim=2)
-        return ((J - J.transpose(1, 2)) ** 2).mean()
+        ], dim=1)  # (B, G, G)
+        # Income derivatives: d[b, i] = ∂w_i/∂log y  (dim G of x)
+        d = torch.stack([
+            torch.autograd.grad(
+                w[:, i].sum(), x_d, create_graph=True, retain_graph=True
+            )[0][:, G]
+            for i in range(G)
+        ], dim=1)  # (B, G)
+        M = J + d.unsqueeze(2) * w.unsqueeze(1)  # (B, G, G)
+        return ((M - M.transpose(1, 2)) ** 2).mean()
 
     def slutsky_penalty(self, x):
-        return self._jacobian_symmetry_penalty(x)
+        return self._slutsky_symmetry_penalty(x)
 
     def slutsky(self, x):
-        return self._jacobian_symmetry_penalty(x)
+        return self._slutsky_symmetry_penalty(x)
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  Fixed-δ habit trainer helper (backward-compatible name)
@@ -279,12 +291,16 @@ def train_window_irl(model, window_feats, w_expert,
         wp = model(x_b)
         loss_kl = nn.KLDivLoss(reduction="batchmean")(torch.log(wp + 1e-10), w_b)
 
-        # Monotonicity w.r.t. current log prices (first G dims)
-        x_d = x_b.detach().clone()
-        x_d.requires_grad_(True)
+        # Own-price monotonicity: penalize positive ∂w_g/∂log p_g for each good g.
+        x_d = x_b.detach().clone().requires_grad_(True)
         wm = model(x_d)
-        grads = torch.autograd.grad(wm.sum(), x_d, create_graph=True)[0][:, :G]
-        loss_mono = torch.mean(torch.clamp(grads, min=0))
+        loss_mono = torch.tensor(0.0, device=device)
+        for _g in range(G):
+            _own = torch.autograd.grad(
+                wm[:, _g].sum(), x_d, create_graph=True, retain_graph=True
+            )[0][:, _g]
+            loss_mono = loss_mono + torch.mean(torch.clamp(_own, min=0))
+        loss_mono = loss_mono / G
 
         loss_slut = torch.tensor(0.0, device=device)
         if ep >= slut_start:

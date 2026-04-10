@@ -1,10 +1,10 @@
 Model,Shock_Good,Response_Good,Elasticity_mean,Elasticity_std
-Neural Demand (habit),Aspirin,Aspirin,-0.958,0.0059
-Neural Demand (habit),Aspirin,Acetaminophen,-0.0038,0.0083
-Neural Demand (habit),Aspirin,Ibuprofen,-0.017,0.0095
-Neural Demand (habit),Acetaminophen,Aspirin,0.0286,0.0075
-Neural Demand (habit),Acetaminophen,Acetaminophen,-1.2371,0.0117
-Neural Demand (habit),Acetaminophen,Ibuprofen,0.2763,0.0119
-Neural Demand (habit),Ibuprofen,Aspirin,0.0016,0.0159
-Neural Demand (habit),Ibuprofen,Acetaminophen,0.1631,0.0117
-Neural Demand (habit),Ibuprofen,Ibuprofen,-1.2006,0.0198
+Neural Demand (habit),Aspirin,Aspirin,-1.0222,0.0314
+Neural Demand (habit),Aspirin,Acetaminophen,-0.0055,0.0382
+Neural Demand (habit),Aspirin,Ibuprofen,0.0231,0.0777
+Neural Demand (habit),Acetaminophen,Aspirin,-0.0126,0.0042
+Neural Demand (habit),Acetaminophen,Acetaminophen,-1.0217,0.0099
+Neural Demand (habit),Acetaminophen,Ibuprofen,0.044,0.0179
+Neural Demand (habit),Ibuprofen,Aspirin,-0.0528,0.013
+Neural Demand (habit),Ibuprofen,Acetaminophen,0.0515,0.0044
+Neural Demand (habit),Ibuprofen,Ibuprofen,-1.0489,0.0129

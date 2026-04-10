@@ -89,7 +89,7 @@ def run_once(seed: int, splits: dict, cfg: dict) -> dict:
 
     # ── Train ──────────────────────────────────────────────────────────────────
     aids_m   = LAAIDS().fit(p_tr, w_tr, y_tr)
-    blp_m    = BLPLogitIV().fit(p_tr, mw_tr, Z_tr)
+    blp_m    = BLPLogitIV().fit(p_tr, mw_tr, Z_tr, y_tr)
     quaids_m = QUAIDS().fit(p_tr, w_tr, y_tr)
     series_m = SeriesDemand().fit(p_tr, w_tr, y_tr)
 
@@ -223,7 +223,7 @@ def run_once(seed: int, splits: dict, cfg: dict) -> dict:
 
     # ── Cross-price elasticity matrices ───────────────────────────────────────
     cross_eps = {}
-    for nm in ["BLP (IV)", "LA-AIDS",
+    for nm in ["Logit-IV", "LA-AIDS",
                "Neural Demand (static)", "Neural Demand (habit)",
                "Neural Demand (CF)", "Neural Demand (habit, CF)"]:
         try:

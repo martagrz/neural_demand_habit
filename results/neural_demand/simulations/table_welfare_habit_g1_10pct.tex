@@ -1,0 +1,44 @@
+\begin{table}[htbp]
+  \centering
+  \caption{Compensating Variation (Habit DGP, 10\% shock to good 1)}
+  \label{tab:sim_welfare_habit_g1}
+  \begin{tabular}{lcc}
+    \toprule
+    \textbf{Model} & \textbf{CV (shock $g_1$)} & \textbf{Error vs. Truth (\%)} \\
+    \midrule
+    \textit{Benchmark} & & \\
+    Ground Truth & $-61.5180$ & --- \\
+                 & $(0.0683)$ & \\
+    \addlinespace
+    \textit{Traditional Models} & & \\
+    LA-AIDS      & $-66.2702$ & 7.7\% \\
+                 & $(0.3835)$ & \\
+    \addlinespace
+    Logit-IV     & $-65.7072$ & 6.8\% \\
+                 & $(0.3819)$ & \\
+    \addlinespace
+    QUAIDS       & $-66.2597$ & 7.7\% \\
+                 & $(0.3422)$ & \\
+    \addlinespace
+    \textit{Semi/Non-parametric} & & \\
+    Series Estm. & $-66.7345$ & 8.5\% \\
+                 & $(0.4077)$ & \\
+    \addlinespace
+    \textit{Neural Demand} & & \\
+    Static       & $-66.6232$ & 8.3\% \\
+                 & $(0.2168)$ & \\
+    \addlinespace
+    Habit        & $-63.9847$ & 4.0\% \\
+                 & $(0.2700)$ & \\
+    \addlinespace
+    CF           & $-66.4117$ & 8.0\% \\
+                 & $(0.2646)$ & \\
+    \addlinespace
+    Habit, CF    & $-63.2189$ & 2.8\% \\
+                 & $(4.5232)$ & \\
+    \bottomrule
+    \addlinespace
+  \end{tabular}
+  \begin{tablenotes} Standard errors are reported in parentheses below the estimates. CV is evaluated under a 10\% increase in good-1 price. For the Habit model, the CV range induced by $\delta \in [0.40, 0.90]$ in the identified set is $[-65.6331, -62.6241]$. For the Habit (CF) model, that range is $[-73.9019, -47.1494]$.
+  \end{tablenotes}
+\end{table}

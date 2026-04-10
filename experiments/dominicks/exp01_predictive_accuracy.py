@@ -9,7 +9,7 @@ weeks.
 
 Models evaluated
 ----------------
-  LA-AIDS, BLP (IV), QUAIDS, Series Est.,
+  LA-AIDS, Logit-IV, QUAIDS, Series Est.,
   Linear Demand (Shared), Linear Demand (GoodSpec), Linear Demand (Orth),
   Neural Demand (static), Neural Demand (habit),
   Neural Demand (FE), Neural Demand (habit, FE)

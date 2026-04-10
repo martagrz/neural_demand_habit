@@ -1,6 +1,6 @@
 % ============================================================
 % Neural Demand — table_cf_accuracy (auto-generated)
-% N_RUNS = 5
+% N_RUNS = 2
 % ============================================================
 
 \begin{table}[htbp]
@@ -12,21 +12,21 @@
     \toprule
     \textbf{Model} & \textbf{RMSE} & \textbf{MAE} & \textbf{KL Div.} \\
     \midrule
-    LA-AIDS & $0.07069$ & $0.05593 \pm 0.00000$ & $0.02311$ \\
-    BLP (IV) & $0.07766$ & $0.05991$ & $0.05564$ \\
+    LA-AIDS & $0.07069$ & $0.05593$ & $0.02311$ \\
+    Logit-IV & $0.07759$ & $0.05996$ & $0.05204$ \\
     QUAIDS & $0.06956$ & $0.05519$ & $0.02265$ \\
-    Series Est. & $0.06514$ & $0.05077 \pm 0.00000$ & $0.02000$ \\
-    Linear Demand (Shared) & $0.09201$ & $0.07361$ & $0.04000$ \\
-    Linear Demand (GoodSpec) & $0.09197$ & $0.07356$ & $0.03990$ \\
-    Linear Demand (Orth) & $0.08662$ & $0.07046$ & $0.03495$ \\
-    Neural Demand (static) & $0.06521 \pm 0.00037$ & $0.05047 \pm 0.00031$ & $0.02018 \pm 0.00022$ \\
-    Neural Demand (habit) & $0.04762 \pm 0.00007$ & $0.03574 \pm 0.00008$ & $0.01046 \pm 0.00003$ \\
-    Neural Demand (CF) & $0.06806 \pm 0.00020$ & $0.05196 \pm 0.00010$ & $0.02135 \pm 0.00013$ \\
-    Neural Demand (habit, CF) & $0.04955 \pm 0.00003$ & $0.03716 \pm 0.00004$ & $0.01141 \pm 0.00002$ \\
+    Series Est. & $0.06514$ & $0.05077$ & $0.02000$ \\
+    Linear Demand (Shared) & $0.09237$ & $0.07426$ & $0.04041$ \\
+    Linear Demand (GoodSpec) & $0.09242$ & $0.07436$ & $0.04043$ \\
+    Linear Demand (Orth) & $0.09291$ & $0.07485$ & $0.04043$ \\
+    Neural Demand (static) & $0.08572 \pm 0.00113$ & $0.06731 \pm 0.00100$ & $0.03360 \pm 0.00105$ \\
+    Neural Demand (habit) & $0.06612 \pm 0.00290$ & $0.05105 \pm 0.00239$ & $0.02006 \pm 0.00152$ \\
+    Neural Demand (CF) & $0.08292 \pm 0.00113$ & $0.06479 \pm 0.00078$ & $0.03116 \pm 0.00086$ \\
+    Neural Demand (habit, CF) & $0.07633 \pm 0.00166$ & $0.05932 \pm 0.00137$ & $0.02617 \pm 0.00107$ \\
     \bottomrule
   \end{tabular}
   \begin{tablenotes}\small
-    \item Mean $\pm$ SE over 5 run(s). RMSE and MAE computed on held-out test weeks.
+    \item Mean $\pm$ SE over 2 run(s). RMSE and MAE computed on held-out test weeks.
   \end{tablenotes}
   \end{threeparttable}
 \end{table}

@@ -53,7 +53,7 @@ ALL_MODELS    = CF_MODELS
 STYLE = {
     "Truth":                        dict(color="k",        ls="-",  lw=3.0),
     "LA-AIDS":                      dict(color="#E53935",  ls="--", lw=2.0),
-    "BLP (IV)":                     dict(color="#9C27B0",  ls="--", lw=2.0),
+    "Logit-IV":                     dict(color="#9C27B0",  ls="--", lw=2.0),
     "QUAIDS":                       dict(color="#43A047",  ls="-.", lw=2.0),
     "Series Estm.":                 dict(color="#FB8C00",  ls=":",  lw=2.0),
     "Linear Demand (Shared)":                 dict(color="#039BE5",  ls=":",  lw=1.5),
@@ -140,7 +140,8 @@ def predict_shares(spec, p, y, *,
         # All 3 goods are inside goods; predict() returns (N, 4) =
         # [s_0, s_1, s_2, s_outside].  Drop the outside-option column so the
         # result is (N, 3), matching w_true — mirrors main_multiple_runs.py.
-        return blp.predict(p)[:, :3]   # (N, 3)
+        y_arr = np.full(len(p), float(y)) if np.ndim(y) == 0 else np.asarray(y)
+        return blp.predict(p, y_arr)[:, :3]   # (N, 3)
     if spec == "quaids":
         return quaids.predict(p, y)
     if spec == "series":

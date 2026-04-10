@@ -132,8 +132,16 @@ def train_neural_irl(
             w_mn = model(lp_d, ly_b, xbp_b, qp_b, v_hat=vh_b)
         else:
             w_mn = model(lp_d, ly_b, v_hat=vh_b)
-        grads = torch.autograd.grad(w_mn.sum(), lp_d, create_graph=True)[0]
-        loss_mono = torch.mean(torch.clamp(grads, min=0))
+        # Own-price monotonicity: penalize positive ∂w_g/∂log p_g for each good g.
+        # (Summing all shares before differentiating gives a constant due to softmax,
+        # so we must differentiate each good's share w.r.t. its own price separately.)
+        loss_mono = torch.tensor(0.0, device=device)
+        for _g in range(model.n_goods):
+            _own = torch.autograd.grad(
+                w_mn[:, _g].sum(), lp_d, create_graph=True, retain_graph=True
+            )[0][:, _g]
+            loss_mono = loss_mono + torch.mean(torch.clamp(_own, min=0))
+        loss_mono = loss_mono / model.n_goods
 
         loss_slut = torch.tensor(0.0, device=device)
         if ep >= slut_start:

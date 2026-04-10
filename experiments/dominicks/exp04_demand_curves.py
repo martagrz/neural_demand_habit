@@ -78,7 +78,7 @@ def run_once(seed: int, splits: dict, cfg: dict) -> dict:
 
     # ── Train ──────────────────────────────────────────────────────────────────
     aids_m   = LAAIDS().fit(p_tr, w_tr, y_tr)
-    blp_m    = BLPLogitIV().fit(p_tr, mw_tr, Z_tr)
+    blp_m    = BLPLogitIV().fit(p_tr, mw_tr, Z_tr, y_tr)
     quaids_m = QUAIDS().fit(p_tr, w_tr, y_tr)
     series_m = SeriesDemand().fit(p_tr, w_tr, y_tr)
     th_sh   = run_lirl(feat_shared,        p_tr, y_tr, w_tr, cfg)
@@ -148,7 +148,7 @@ def run_once(seed: int, splits: dict, cfg: dict) -> dict:
         curves_g = {}
         for nm, xb_kw in [
             ("LA-AIDS",                     {}),
-            ("BLP (IV)",                    {}),
+            ("Logit-IV",                    {}),
             ("QUAIDS",                      {}),
             ("Series Est.",                 {}),
             ("Linear Demand (Shared)",                {}),

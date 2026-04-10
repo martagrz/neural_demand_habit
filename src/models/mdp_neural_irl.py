@@ -95,29 +95,51 @@ class HabitND(nn.Module):
     #  Slutsky symmetry penalty                                            #
     # ------------------------------------------------------------------ #
 
-    def _jacobian_symmetry_penalty(self, log_p, log_y, log_xb_prev, log_q_prev,
-                                   v_hat=None):
+    def _slutsky_symmetry_penalty(self, log_p, log_y, log_xb_prev, log_q_prev,
+                                  v_hat=None, max_goods=None):
+        """True Slutsky symmetry penalty with income-effect correction.
+
+        Penalizes asymmetry of M_ij = ∂w_i/∂log p_j + w_j · ∂w_i/∂log y.
+        Habit variables (log_xb_prev, log_q_prev) are treated as fixed state;
+        only current log prices and log income are differentiated.
+        When max_goods < G, uses a random square submatrix (unbiased estimate).
+        """
         lp_d = log_p.detach().requires_grad_(True)
-        w = self.forward(lp_d, log_y, log_xb_prev, log_q_prev, v_hat)
-        rows = []
-        for i in range(self.n_goods):
-            grad = torch.autograd.grad(
-                w[:, i].sum(), lp_d, create_graph=True, retain_graph=True
+        ly_d = log_y.detach().requires_grad_(True)
+        w = self.forward(lp_d, ly_d, log_xb_prev, log_q_prev, v_hat)
+        G = self.n_goods
+        n_s = min(G, int(max_goods)) if max_goods is not None else G
+        idx = (
+            torch.randperm(G, device=lp_d.device)[:n_s]
+            if n_s < G else torch.arange(G, device=lp_d.device)
+        )
+        J_rows = torch.stack([
+            torch.autograd.grad(
+                w[:, idx[k]].sum(), lp_d, create_graph=True, retain_graph=True
             )[0]
-            if grad is None:
-                 grad = torch.zeros_like(lp_d)
-            rows.append(grad.unsqueeze(2))
-        
-        J = torch.cat(rows, dim=2)
-        return ((J - J.transpose(1, 2)) ** 2).mean()
+            for k in range(n_s)
+        ], dim=1)  # (B, n_s, G)
+        J_sub = J_rows[:, :, idx]
+        d_sub = torch.stack([
+            torch.autograd.grad(
+                w[:, idx[k]].sum(), ly_d, create_graph=True, retain_graph=True
+            )[0].squeeze(1)
+            for k in range(n_s)
+        ], dim=1)  # (B, n_s)
+        w_sub = w[:, idx]
+        M_sub = J_sub + d_sub.unsqueeze(2) * w_sub.unsqueeze(1)
+        return ((M_sub - M_sub.transpose(1, 2)) ** 2).mean()
 
     # Dominicks API
-    def slutsky(self, lp, ly, log_xb_prev, log_q_prev, v_hat=None):
-        return self._jacobian_symmetry_penalty(lp, ly, log_xb_prev, log_q_prev, v_hat)
+    def slutsky(self, lp, ly, log_xb_prev, log_q_prev, v_hat=None, max_goods=None):
+        return self._slutsky_symmetry_penalty(lp, ly, log_xb_prev, log_q_prev,
+                                              v_hat, max_goods=max_goods)
 
     # Simulation API
-    def slutsky_penalty(self, log_p, log_y, log_xb_prev, log_q_prev, v_hat=None):
-        return self._jacobian_symmetry_penalty(log_p, log_y, log_xb_prev, log_q_prev, v_hat)
+    def slutsky_penalty(self, log_p, log_y, log_xb_prev, log_q_prev, v_hat=None,
+                        max_goods=None):
+        return self._slutsky_symmetry_penalty(log_p, log_y, log_xb_prev, log_q_prev,
+                                              v_hat, max_goods=max_goods)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -191,24 +213,46 @@ class HabitND_FE(nn.Module):
             inp.append(v_hat)
         return torch.softmax(self.net(torch.cat(inp, dim=1)), dim=1)
 
-    def _jacobian_symmetry_penalty(self, log_p, log_y, log_xb_prev, log_q_prev,
-                                   store_idx, v_hat=None):
-        lp_d = log_p.detach().requires_grad_(True)
-        w = self.forward(lp_d, log_y, log_xb_prev, log_q_prev, store_idx, v_hat)
-        rows = [
-            torch.autograd.grad(
-                w[:, i].sum(), lp_d, create_graph=True, retain_graph=True
-            )[0].unsqueeze(2)
-            for i in range(self.n_goods)
-        ]
-        J = torch.cat(rows, dim=2)
-        return ((J - J.transpose(1, 2)) ** 2).mean()
+    def _slutsky_symmetry_penalty(self, log_p, log_y, log_xb_prev, log_q_prev,
+                                  store_idx, v_hat=None, max_goods=None):
+        """True Slutsky symmetry penalty with income-effect correction.
 
-    def slutsky(self, lp, ly, log_xb_prev, log_q_prev, store_idx, v_hat=None):
-        return self._jacobian_symmetry_penalty(lp, ly, log_xb_prev, log_q_prev,
-                                               store_idx, v_hat)
+        Penalizes asymmetry of M_ij = ∂w_i/∂log p_j + w_j · ∂w_i/∂log y.
+        Habit variables and store embedding are treated as fixed state.
+        When max_goods < G, uses a random square submatrix (unbiased estimate).
+        """
+        lp_d = log_p.detach().requires_grad_(True)
+        ly_d = log_y.detach().requires_grad_(True)
+        w = self.forward(lp_d, ly_d, log_xb_prev, log_q_prev, store_idx, v_hat)
+        G = self.n_goods
+        n_s = min(G, int(max_goods)) if max_goods is not None else G
+        idx = (
+            torch.randperm(G, device=lp_d.device)[:n_s]
+            if n_s < G else torch.arange(G, device=lp_d.device)
+        )
+        J_rows = torch.stack([
+            torch.autograd.grad(
+                w[:, idx[k]].sum(), lp_d, create_graph=True, retain_graph=True
+            )[0]
+            for k in range(n_s)
+        ], dim=1)
+        J_sub = J_rows[:, :, idx]
+        d_sub = torch.stack([
+            torch.autograd.grad(
+                w[:, idx[k]].sum(), ly_d, create_graph=True, retain_graph=True
+            )[0].squeeze(1)
+            for k in range(n_s)
+        ], dim=1)
+        w_sub = w[:, idx]
+        M_sub = J_sub + d_sub.unsqueeze(2) * w_sub.unsqueeze(1)
+        return ((M_sub - M_sub.transpose(1, 2)) ** 2).mean()
+
+    def slutsky(self, lp, ly, log_xb_prev, log_q_prev, store_idx, v_hat=None,
+                max_goods=None):
+        return self._slutsky_symmetry_penalty(lp, ly, log_xb_prev, log_q_prev,
+                                              store_idx, v_hat, max_goods=max_goods)
 
     def slutsky_penalty(self, log_p, log_y, log_xb_prev, log_q_prev, store_idx,
-                        v_hat=None):
-        return self._jacobian_symmetry_penalty(log_p, log_y, log_xb_prev, log_q_prev,
-                                               store_idx, v_hat)
+                        v_hat=None, max_goods=None):
+        return self._slutsky_symmetry_penalty(log_p, log_y, log_xb_prev, log_q_prev,
+                                              store_idx, v_hat, max_goods=max_goods)
