@@ -71,6 +71,14 @@ BASE_CFG = dict(
     nirl_lam_mono    = 0.2,
     nirl_lam_slut    = 0.05,
     nirl_slut_start  = 0.3,
+    # Check at most this many randomly-sampled goods for monotonicity per step.
+    # Keeps the K backward-pass loop from dominating at large K.
+    max_mono_goods   = 32,
+    # Check at most this many goods for the Slutsky symmetry penalty per step.
+    # Uses a random n×n submatrix of M; same motivation as max_mono_goods.
+    max_slut_goods   = 32,
+    # Stop training if best KL does not improve for this many epochs (0 = off).
+    nirl_early_stop_patience = 1000,
 
     # MDP / Habit neural IRL
     mdp_hidden       = 128,
@@ -80,6 +88,7 @@ BASE_CFG = dict(
     mdp_lam_mono     = 0.3,
     mdp_lam_slut     = 0.1,
     mdp_slut_start   = 0.25,
+    mdp_early_stop_patience = 1000,
 
     # MDP E2E (habit-augmented Neural Demand)
     mdp_e2e_hidden       = 128,
@@ -269,7 +278,7 @@ EXPERIMENTS = {
     "07": ("Full Model Figures",         _run_exp07),
     "08": ("First-Stage Diagnostics",    _run_exp08),
     "09": ("Regularity Dashboard",       _run_exp09),
-    "12": ("UPC-level BLP vs NDS",       _run_exp12),
+    "12": ("UPC-level Logit-IV vs NDS",   _run_exp12),
 }
 
 

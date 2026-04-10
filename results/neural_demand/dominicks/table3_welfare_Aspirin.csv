@@ -1,17 +1,17 @@
 Model,CV_Loss_mean,CV_Loss_std,n_runs
-LA-AIDS,-23.218241,0.0,5
-BLP (IV),-22.117644,0.0,5
-QUAIDS,-23.391577,0.0,5
-Series Est.,-23.329975,0.0,5
-Neural Demand (window),-23.788062,0.062387,5
-Linear Demand (Shared),-28.232518,0.0,5
-Linear Demand (GoodSpec),-28.178325,0.0,5
-Linear Demand (Orth),-24.070642,0.0,5
-Neural Demand (static),-23.758556,0.173282,5
-Neural Demand (habit),-21.167493,0.087202,5
-Neural Demand (FE),-24.274908,0.244597,5
-"Neural Demand (habit, FE)",-21.646982,0.178044,5
-Neural Demand (CF),-22.708718,0.182724,5
-"Neural Demand (habit, CF)",-20.904199,0.056499,5
-"Neural Demand (habit, FE, CF)",-21.835698,0.12021,5
-PlaceboND,-23.540761,0.203671,5
+LA-AIDS,-23.218241,0.0,2
+Logit-IV,-22.117644,0.0,2
+QUAIDS,-23.391577,0.0,2
+Series Est.,-23.329975,0.0,2
+Neural Demand (window),-23.48455,0.098917,2
+Linear Demand (Shared),-28.565385,0.0,2
+Linear Demand (GoodSpec),-28.599504,0.0,2
+Linear Demand (Orth),-25.612607,0.0,2
+Neural Demand (static),-23.309858,0.214065,2
+Neural Demand (habit),-22.66043,0.051559,2
+Neural Demand (FE),-23.122518,0.166028,2
+"Neural Demand (habit, FE)",-23.14455,0.05517,2
+Neural Demand (CF),-23.039835,0.288811,2
+"Neural Demand (habit, CF)",-22.460319,0.061266,2
+"Neural Demand (habit, FE, CF)",-22.90605,0.201566,2
+PlaceboND,-23.157253,0.178875,2

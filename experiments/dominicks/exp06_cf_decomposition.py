@@ -78,7 +78,7 @@ warnings.filterwarnings("ignore")
 # ─────────────────────────────────────────────────────────────────────────────
 
 CF_MODEL_NAMES = [
-    "LA-AIDS", "BLP (IV)", "QUAIDS", "Series Est.",
+    "LA-AIDS", "Logit-IV", "QUAIDS", "Series Est.",
     "Linear Demand (Shared)", "Linear Demand (GoodSpec)", "Linear Demand (Orth)",
     "Neural Demand (static)",
     "Neural Demand (habit)",
@@ -116,7 +116,7 @@ def run_once(seed: int, splits: dict, cfg: dict) -> dict:
 
     # ── Static benchmarks ─────────────────────────────────────────────────────
     aids_m   = LAAIDS().fit(p_tr, w_tr, y_tr)
-    blp_m    = BLPLogitIV().fit(p_tr, mw_tr, Z_tr)
+    blp_m    = BLPLogitIV().fit(p_tr, mw_tr, Z_tr, y_tr)
     quaids_m = QUAIDS().fit(p_tr, w_tr, y_tr)
     series_m = SeriesDemand().fit(p_tr, w_tr, y_tr)
     th_sh   = run_lirl(feat_shared,        p_tr, y_tr, w_tr, cfg)

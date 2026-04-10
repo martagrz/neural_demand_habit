@@ -77,6 +77,8 @@ def train_dominicks(model, p_tr, y_tr, w_tr, pfx, cfg,
 
     best_kl, best_sd, hist = float("inf"), None, []
     _last_full_kl = float("inf")   # cache full-data KL for history logging
+    _patience = int(cfg.get(f"{pfx}_early_stop_patience", 0))  # 0 = disabled
+    _no_improve_eps = 0
 
     for ep in range(1, ep_tot + 1):
         model.train()
@@ -107,23 +109,39 @@ def train_dominicks(model, p_tr, y_tr, w_tr, pfx, cfg,
             wm = model(lp_d, ly_b, SI[idx], v_hat=vh_b)
         else:
             wm = model(lp_d, ly_b, v_hat=vh_b)
-        g = torch.autograd.grad(wm.sum(), lp_d, create_graph=True)[0]
-        lmono = torch.mean(torch.clamp(g, min=0))
+        # Own-price monotonicity: penalize positive ∂w_g/∂log p_g for each good g.
+        # For large K, randomly subsample goods each step to avoid K backward passes.
+        lmono = torch.tensor(0.0, device=dev)
+        _max_mono = int(cfg.get("max_mono_goods", model.n_goods))
+        _n_check = min(model.n_goods, _max_mono)
+        _goods_check = (
+            torch.randperm(model.n_goods, device=dev)[:_n_check].tolist()
+            if _n_check < model.n_goods else range(model.n_goods)
+        )
+        for _g in _goods_check:
+            _own = torch.autograd.grad(
+                wm[:, _g].sum(), lp_d, create_graph=True, retain_graph=True
+            )[0][:, _g]
+            lmono = lmono + torch.mean(torch.clamp(_own, min=0))
+        lmono = lmono / _n_check
 
         lslut = torch.tensor(0.0, device=dev)
         if ep >= slut0:
             sub    = torch.randperm(N, device=dev)[:64]
             vh_sub = V_HAT[sub] if cf else None
+            _max_slut = int(cfg.get("max_slut_goods", model.n_goods))
             if mdp and _fe:
                 lslut = model.slutsky(LP[sub], LY[sub], XB_PREV[sub], Q_PREV[sub],
-                                      SI[sub], v_hat=vh_sub)
+                                      SI[sub], v_hat=vh_sub, max_goods=_max_slut)
             elif mdp:
                 lslut = model.slutsky(LP[sub], LY[sub], XB_PREV[sub], Q_PREV[sub],
-                                      v_hat=vh_sub)
+                                      v_hat=vh_sub, max_goods=_max_slut)
             elif _fe:
-                lslut = model.slutsky(LP[sub], LY[sub], SI[sub], v_hat=vh_sub)
+                lslut = model.slutsky(LP[sub], LY[sub], SI[sub], v_hat=vh_sub,
+                                      max_goods=_max_slut)
             else:
-                lslut = model.slutsky(LP[sub], LY[sub], v_hat=vh_sub)
+                lslut = model.slutsky(LP[sub], LY[sub], v_hat=vh_sub,
+                                      max_goods=_max_slut)
 
         loss = lkl + cfg[f"{pfx}_lam_mono"] * lmono + cfg[f"{pfx}_lam_slut"] * lslut
         loss.backward()
@@ -147,7 +165,14 @@ def train_dominicks(model, p_tr, y_tr, w_tr, pfx, cfg,
             if kl < best_kl:
                 best_kl = kl
                 best_sd = {k: v.cpu().clone() for k, v in model.state_dict().items()}
+                _no_improve_eps = 0
+            else:
+                _no_improve_eps += 10
             model.train()
+            if _patience > 0 and _no_improve_eps >= _patience:
+                if verbose:
+                    print(f"    [{tag}] Early stop at ep {ep} (no improvement for {_patience} eps)")
+                break
 
         # Log full-data KL (not noisy mini-batch KL) for clean convergence plots
         if ep % 20 == 0:

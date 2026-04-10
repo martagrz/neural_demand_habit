@@ -76,7 +76,7 @@ warnings.filterwarnings("ignore")
 # All ordered model specs (display-name → predict_shares spec key)
 MODEL_SPECS = [
     ("LA-AIDS",                      "aids"),
-    ("BLP (IV)",                     "blp"),
+    ("Logit-IV",                     "blp"),
     ("QUAIDS",                       "quaids"),
     ("Series Estm.",                 "series"),
     ("Linear Demand (Shared)",                 "linear-demand-shared"),
@@ -144,7 +144,7 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
     _blp_out = 0.01
     mw_hab   = np.column_stack([w_hab * (1 - _blp_out),
                                  np.full(len(w_hab), _blp_out)])
-    blp_hab  = BLPBench().fit(p_pre, mw_hab, Z)
+    blp_hab  = BLPBench().fit(p_pre, mw_hab, Z, income)
     quaids_hab = QUAIDS();       quaids_hab.fit(p_pre, w_hab, income)
     series_hab = SeriesDemand(); series_hab.fit(p_pre, w_hab, income)
 

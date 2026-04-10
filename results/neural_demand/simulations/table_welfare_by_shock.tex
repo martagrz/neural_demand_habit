@@ -5,30 +5,42 @@
 
 \begin{table}[htbp]
   \centering
-  \caption{Compensating Variation by Shocked Good — Simulation (CES DGP)}
-  \label{tab:sim_welfare_by_shock}
-  \begin{threeparttable}
-  \begin{tabular}{lccc}
+  \caption{Compensating Variation --- Simulation (CES DGP)}
+  \label{tab:sim_welfare_updated}
+  \begin{tabular}{llllcc}
     \toprule
-    \textbf{Model} & \textbf{Shock good 0} & \textbf{Shock good 1} & \textbf{Shock good 2} \\
+    & \multicolumn{4}{c}{\textbf{Compensating Variation (CV)}} & \textbf{Error vs.} \\
+    \cmidrule(lr){2-5}
+    \textbf{Model} & \textbf{Shock $g_0$} & \textbf{Shock $g_1$} & \textbf{Shock $g_2$} & \textbf{Average} & \textbf{Truth (\%)} \\
     \midrule
-    LA-AIDS & $-123.8763 \pm 0.9310$ & $-118.6084 \pm 0.2460$ & $-36.3506 \pm 1.0808$ \\
-    BLP (IV) & $-122.5639 \pm 0.4343$ & $-116.2495 \pm 1.0716$ & $-34.6115 \pm 1.6031$ \\
-    QUAIDS & $-123.7257 \pm 0.8340$ & $-118.5765 \pm 0.1874$ & $-36.6320 \pm 1.0018$ \\
-    Series Estm. & $-124.6152 \pm 1.0717$ & $-119.4694 \pm 0.2996$ & $-34.9815 \pm 1.3235$ \\
-    Linear Demand (Shared) & $-94.0836 \pm 0.8687$ & $-90.5112 \pm 0.1950$ & $-94.7516 \pm 2.4011$ \\
-    Linear Demand (GoodSpec) & $-93.8232 \pm 0.8059$ & $-89.8695 \pm 0.4985$ & $-94.4161 \pm 2.7235$ \\
-    Linear Demand (Orth) & $-123.7167 \pm 0.3832$ & $-116.5713 \pm 1.3765$ & $-35.0815 \pm 1.8814$ \\
-    Neural Demand (static) & $-125.2823 \pm 1.2688$ & $-118.5053 \pm 0.1968$ & $-34.5685 \pm 0.8318$ \\
-    Neural Demand (habit) & $-124.3619 \pm 0.7033$ & $-119.1701 \pm 0.3139$ & $-35.0939 \pm 0.8128$ \\
-    Neural Demand (CF) & $-124.2744 \pm 0.8282$ & $-119.5980 \pm 0.2452$ & $-34.6062 \pm 1.0297$ \\
-    Neural Demand (habit, CF) & $-122.2479 \pm 1.1871$ & $-120.5672 \pm 0.3847$ & $-36.7815 \pm 0.4350$ \\
-    Ground Truth & $-124.5386 \pm 1.0722$ & $-119.2152 \pm 0.1555$ & $-35.0288 \pm 1.1733$ \\
+    \multicolumn{2}{l}{\textit{Benchmark}} & & & & \\
+    Ground Truth & $-66.43$ & $-63.63$ & $-18.88$ & $-49.65$ & --- \\
+                 & $(0.56)$ & $(0.08)$ & $(0.63)$ & $(0.28)$ & \\
+    \addlinespace
+    \multicolumn{2}{l}{\textit{Traditional Models}} & & & & \\
+    LA-AIDS & $-66.05$ & $-63.28$ & $-19.64$ & $-49.66$ & 1.7\% \\
+                 & $(0.48)$ & $(0.13)$ & $(0.58)$ & $(0.26)$ & \\
+    Logit-IV & $-65.68$ & $-62.38$ & $-18.77$ & $-48.94$ & 1.4\% \\
+                 & $(0.21)$ & $(0.60)$ & $(0.85)$ & $(0.35)$ & \\
+    QUAIDS & $-65.96$ & $-63.26$ & $-19.79$ & $-49.67$ & 2.0\% \\
+                 & $(0.43)$ & $(0.11)$ & $(0.53)$ & $(0.23)$ & \\
+    \addlinespace
+    \multicolumn{2}{l}{\textit{Semi-parametric}} & & & & \\
+    Series Estm. & $-66.43$ & $-63.73$ & $-18.86$ & $-49.67$ & 0.2\% \\
+                 & $(0.56)$ & $(0.16)$ & $(0.71)$ & $(0.31)$ & \\
+    \addlinespace
+    \multicolumn{2}{l}{\textit{Neural Demand}} & & & & \\
+    Static & $-66.85$ & $-63.30$ & $-18.66$ & $-49.60$ & 0.8\% \\
+                 & $(0.64)$ & $(0.14)$ & $(0.44)$ & $(0.26)$ & \\
+    Habit & $-66.36$ & $-63.61$ & $-18.92$ & $-49.63$ & 0.4\% \\
+                 & $(0.37)$ & $(0.14)$ & $(0.46)$ & $(0.20)$ & \\
+    Static, CF & $-66.31$ & $-63.86$ & $-18.67$ & $-49.62$ & 0.6\% \\
+                 & $(0.44)$ & $(0.13)$ & $(0.56)$ & $(0.24)$ & \\
+    Habit, CF & $-65.14$ & $-64.24$ & $-19.78$ & $-49.72$ & 2.6\% \\
+                 & $(0.57)$ & $(0.19)$ & $(0.27)$ & $(0.22)$ & \\
     \bottomrule
   \end{tabular}
-  \begin{tablenotes}\small
-    \item Each column reports CV under a 20\% price increase applied to one good only.
-    \item Entries are mean $\pm$ SE across runs.
+  \begin{tablenotes}
+    Standard errors are reported in parentheses below the estimates. Simulations based on CES DGP with three 10\% one-good shocks.
   \end{tablenotes}
-  \end{threeparttable}
 \end{table}

@@ -53,7 +53,7 @@ from experiments.dominicks.utils import (
 # ─────────────────────────────────────────────────────────────────────────────
 
 MODEL_NAMES = [
-    'LA-AIDS', 'BLP (IV)', 'QUAIDS', 'Series Est.', 'Neural Demand (window)',
+    'LA-AIDS', 'Logit-IV', 'QUAIDS', 'Series Est.', 'Neural Demand (window)',
     'Linear Demand (Shared)', 'Linear Demand (GoodSpec)', 'Linear Demand (Orth)',
     'Neural Demand (static)', 'Neural Demand (habit)',
     # Store-FE variants
@@ -124,7 +124,7 @@ def run_once(seed: int, splits: dict, cfg: dict) -> dict:
 
     # ── Train models ──────────────────────────────────────────────────────
     aids_m   = LAAIDS().fit(p_tr, w_tr, y_tr)
-    blp_m    = BLPLogitIV().fit(p_tr, mw_tr, Z_tr)
+    blp_m    = BLPLogitIV().fit(p_tr, mw_tr, Z_tr, y_tr)
     quaids_m = QUAIDS().fit(p_tr, w_tr, y_tr)
     series_m = SeriesDemand().fit(p_tr, w_tr, y_tr)
 
@@ -288,7 +288,7 @@ def run_once(seed: int, splits: dict, cfg: dict) -> dict:
 
     SPECS = [
         ('LA-AIDS',          'aids',       {},                                            None),
-        ('BLP (IV)',         'blp',        {},                                            None),
+        ('Logit-IV',         'blp',        {},                                            None),
         ('QUAIDS',           'quaids',     {},                                            None),
         ('Series Est.',      'series',     {},                                            None),
         ('Neural Demand (window)',  'window-irl', {},                                            None),
@@ -370,7 +370,7 @@ def run_once(seed: int, splits: dict, cfg: dict) -> dict:
     # ── Cross-price elasticity matrices ───────────────────────────────────
     _cp_specs = [
         ('LA-AIDS',       'aids',   {},   None),
-        ('BLP (IV)',      'blp',    {},   None),
+        ('Logit-IV',      'blp',    {},   None),
         ('QUAIDS',        'quaids', {},   None),
         ('Neural Demand (static)', 'nirl',   {},   None),
         ('Neural Demand (habit)',  'mdp',    {},   (xb_mn, qp_mn)),
@@ -477,7 +477,7 @@ def run_once(seed: int, splits: dict, cfg: dict) -> dict:
 
     # ── Table 4: MDP advantage ────────────────────────────────────────────
     r_a    = perf['LA-AIDS']['RMSE']
-    r_blp  = perf['BLP (IV)']['RMSE']
+    r_blp  = perf['Logit-IV']['RMSE']
     r_q    = perf['QUAIDS']['RMSE']
     r_s    = perf['Series Est.']['RMSE']
     r_wirl = perf['Neural Demand (window)']['RMSE']
@@ -539,7 +539,7 @@ def run_once(seed: int, splits: dict, cfg: dict) -> dict:
     curves = {}
     _curve_specs_full = [
         ('aids',       {},                                    None,                   'LA-AIDS'),
-        ('blp',        {},                                    None,                   'BLP (IV)'),
+        ('blp',        {},                                    None,                   'Logit-IV'),
         ('quaids',     {},                                    None,                   'QUAIDS'),
         ('series',     {},                                    None,                   'Series Est.'),
         ('window-irl', {},                                    None,                   'Neural Demand (window)'),
@@ -592,7 +592,7 @@ def run_once(seed: int, splits: dict, cfg: dict) -> dict:
         _xbr_g, _qpr_g = mdp_price_cond_habit(_pgr_g, _g, p_te, xb_te, qp_te)
         _cs = [
             ('aids',       {},                                  None,                    'LA-AIDS'),
-            ('blp',        {},                                  None,                    'BLP (IV)'),
+            ('blp',        {},                                  None,                    'Logit-IV'),
             ('quaids',     {},                                  None,                    'QUAIDS'),
             ('series',     {},                                  None,                    'Series Est.'),
             ('window-irl', {},                                  None,                    'Neural Demand (window)'),
@@ -752,7 +752,7 @@ def aggregate(all_runs: list) -> dict:
     cf_rsq_mean = np.stack([r['cf_rsq'] for r in all_runs], 0).mean(0)
 
     # Cross-price elasticity
-    _cp_names = ['LA-AIDS', 'BLP (IV)', 'QUAIDS',
+    _cp_names = ['LA-AIDS', 'Logit-IV', 'QUAIDS',
                  'Neural Demand (static)', 'Neural Demand (habit)',
                  'Neural Demand (FE)', 'Neural Demand (habit, FE)',
                  'Neural Demand (CF)', 'Neural Demand (habit, CF)']
@@ -875,7 +875,7 @@ def _make_figures(agg: dict, splits: dict, cfg: dict) -> None:
     fig1, ax1 = plt.subplots(figsize=(11, 6))
     curve_defs = [
         ("r--",  2.0, None,       "LA-AIDS"),
-        ("--",   2.0, "#9C27B0",  "BLP (IV)"),
+        ("--",   2.0, "#9C27B0",  "Logit-IV"),
         ("g-.",  2.0, None,       "QUAIDS"),
         (":",    2.0, "#FB8C00",  "Series Est."),
         ("--",   2.0, "#6D4C41",  "Neural Demand (window)"),
@@ -915,7 +915,7 @@ def _make_figures(agg: dict, splits: dict, cfg: dict) -> None:
     fig2, axes2 = plt.subplots(3, 3, figsize=(16, 14), sharey="row")
     _cpm_defs = [
         ("r--", 1.8, None,      "LA-AIDS",                          "LA-AIDS"),
-        ("--",  1.8, "#9C27B0", "BLP (IV)",                         "BLP (IV)"),
+        ("--",  1.8, "#9C27B0", "Logit-IV",                         "Logit-IV"),
         ("g-.", 1.8, None,      "QUAIDS",                           "QUAIDS"),
         (":",   1.8, "#FB8C00", "Series Est.",                      "Series Est."),
         ("--",  1.8, "#6D4C41", "Neural Demand (window)",           "Neural Demand (window)"),
@@ -1026,7 +1026,7 @@ def _make_figures(agg: dict, splits: dict, cfg: dict) -> None:
 
         scat_defs = [
             ("LA-AIDS",              "aids",      {},                            {},                                        "#E53935"),
-            ("BLP (IV)",             "blp",       {},                            {},                                        "#9C27B0"),
+            ("Logit-IV",             "blp",       {},                            {},                                        "#9C27B0"),
             ("QUAIDS",               "quaids",    {},                            {},                                        "#43A047"),
             ("Series Est.",          "series",    {},                            {},                                        "#FB8C00"),
             ("N. Demand\n(window)",  "window-irl",{},                            {},                                        "#6D4C41"),
@@ -1108,7 +1108,7 @@ def _make_figures(agg: dict, splits: dict, cfg: dict) -> None:
         print("  Saved: fig_rmse_bars")
 
     # ── Fig 7: Cross-price elasticity heatmaps ────────────────────────────────
-    _hm_models = ["LA-AIDS", "BLP (IV)", "QUAIDS", "Neural Demand (static)", "Neural Demand (habit)",
+    _hm_models = ["LA-AIDS", "Logit-IV", "QUAIDS", "Neural Demand (static)", "Neural Demand (habit)",
                   "Neural Demand (FE)", "Neural Demand (habit, FE)",
                   "Neural Demand (CF)", "Neural Demand (habit, CF)"]
     _hm_avail  = [nm for nm in _hm_models if nm in cross_elast_mean]

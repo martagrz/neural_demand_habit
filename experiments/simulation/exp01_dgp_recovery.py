@@ -70,7 +70,7 @@ warnings.filterwarnings("ignore")
 
 MODEL_SPECS = [
     ("LA-AIDS",                      "aids"),
-    ("BLP (IV)",                     "blp"),
+    ("Logit-IV",                     "blp"),
     ("QUAIDS",                       "quaids"),
     ("Series Estm.",                 "series"),
     ("Linear Demand (Shared)",                 "linear-demand-shared"),
@@ -129,9 +129,10 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
         "Endogenous CES": CESConsumer(),  # Placeholder, handled specially in loop
     }
 
-    acc_rows   = []
-    elast_rows = []
-    welf_rows  = []
+    acc_rows          = []
+    elast_rows        = []
+    welf_rows         = []
+    welf_by_shock_rows = []
     curves_ces        = {}
     scatter_data      = {}
     curves_ces_full   = {}
@@ -214,7 +215,7 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
         _blp_out = 0.01
         mw_train = np.column_stack([curr_w_train * (1 - _blp_out),
                                     np.full(N, _blp_out)])
-        blp_m    = BLPBench().fit(curr_p_pre, mw_train, curr_Z)
+        blp_m    = BLPBench().fit(curr_p_pre, mw_train, curr_Z, income)
         quaids_m = QUAIDS();    quaids_m.fit(curr_p_pre, curr_w_train, income)
         series_m = SeriesDemand(); series_m.fit(curr_p_pre, curr_w_train, income)
 
@@ -413,13 +414,53 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
         welf_rows.append({"DGP": dgp_name, "Model": "Ground Truth",
                           "CV": cv_true, "CV_err_pct": 0.0})
 
+        # ── Welfare by shock (three 10% single-good shocks, CES only) ────────
+        if dgp_name == "CES":
+            _SHOCK_PCT = 0.10
+            _avg_p_base = p_pre.mean(0)
+            _cv_true_by_g = {}
+            for _g in range(3):
+                _sf = np.ones(3); _sf[_g] = 1.0 + _SHOCK_PCT
+                try:
+                    _cv_true_by_g[_g] = compute_compensating_variation(
+                        "truth", _avg_p_base, _avg_p_base * _sf, AVG_Y, **KW)
+                except Exception:
+                    _cv_true_by_g[_g] = np.nan
+
+            for nm, sp in MODEL_SPECS:
+                _xb_kw = {}
+                if sp == "neural-demand-habit":
+                    _xb_kw = dict(xbar_pt=xb_post.mean(0))
+                _row = {"DGP": dgp_name, "Model": nm}
+                for _g in range(3):
+                    _sf = np.ones(3); _sf[_g] = 1.0 + _SHOCK_PCT
+                    try:
+                        _cv_g = compute_compensating_variation(
+                            sp, _avg_p_base, _avg_p_base * _sf, AVG_Y,
+                            **_xb_kw, **KW)
+                        _ct_g = _cv_true_by_g.get(_g, np.nan)
+                        _row[f"CV_g{_g}"] = _cv_g
+                        _row[f"CV_err_g{_g}"] = (
+                            100 * abs(_cv_g - _ct_g) / max(abs(_ct_g), 1e-9)
+                            if not np.isnan(_ct_g) else np.nan)
+                    except Exception:
+                        _row[f"CV_g{_g}"] = np.nan
+                        _row[f"CV_err_g{_g}"] = np.nan
+                welf_by_shock_rows.append(_row)
+
+            _gt_row = {"DGP": dgp_name, "Model": "Ground Truth"}
+            for _g in range(3):
+                _gt_row[f"CV_g{_g}"] = _cv_true_by_g.get(_g, np.nan)
+                _gt_row[f"CV_err_g{_g}"] = 0.0
+            welf_by_shock_rows.append(_gt_row)
+
         # ── Demand curves (CES only) ──────────────────────────────────────────
         if dgp_name == "CES":
             test_p  = np.tile(p_pre.mean(0), (80, 1)); test_p[:, 1] = P_GRID
             fixed_y = np.full(80, AVG_Y)
             curves_ces["Truth"]                        = consumer.solve_demand(test_p, fixed_y)[:, 0]
             curves_ces["LA-AIDS"]                      = predict_shares("aids",        test_p, fixed_y, **KW)[:, 0]
-            curves_ces["BLP (IV)"]                     = predict_shares("blp",         test_p, fixed_y, **KW)[:, 0]
+            curves_ces["Logit-IV"]                     = predict_shares("blp",         test_p, fixed_y, **KW)[:, 0]
             curves_ces["QUAIDS"]                       = predict_shares("quaids",      test_p, fixed_y, **KW)[:, 0]
             curves_ces["Series Estm."]                 = predict_shares("series",      test_p, fixed_y, **KW)[:, 0]
             curves_ces["Linear Demand (Shared)"]                 = predict_shares("linear-demand-shared", test_p, fixed_y, **KW)[:, 0]
@@ -446,7 +487,7 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
             _curve_specs = [
                 ("Truth",                    "truth",       {}),
                 ("LA-AIDS",                  "aids",        {}),
-                ("BLP (IV)",                 "blp",         {}),
+                ("Logit-IV",                 "blp",         {}),
                 ("QUAIDS",                   "quaids",      {}),
                 ("Series Estm.",             "series",      {}),
                 ("Linear Demand (Orth)",               "linear-demand-orth",   {}),
@@ -467,7 +508,7 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
             _elast_specs = [
                 ("Ground Truth",             "truth",     {}),
                 ("LA-AIDS",                  "aids",      {}),
-                ("BLP (IV)",                 "blp",       {}),
+                ("Logit-IV",                 "blp",       {}),
                 ("QUAIDS",                   "quaids",    {}),
                 ("Neural Demand (static)",   "neural-demand-static", {}),
             ]
@@ -492,6 +533,7 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
         acc=pd.DataFrame(acc_rows),
         elast=pd.DataFrame(elast_rows),
         welf=pd.DataFrame(welf_rows),
+        welf_by_shock=pd.DataFrame(welf_by_shock_rows),
         curves_ces=curves_ces,
         scatter_data=scatter_data,
         curves_ces_full=curves_ces_full,
@@ -543,6 +585,15 @@ def aggregate(all_results: list) -> dict:
     acc_agg   = _agg_df([r["acc"]   for r in all_results], ["RMSE", "MAE"])
     elast_agg = _agg_df([r["elast"] for r in all_results], ["eps0", "eps1", "eps2"])
     welf_agg  = _agg_df([r["welf"]  for r in all_results], ["CV", "CV_err_pct"])
+
+    _wbs_list = [r["welf_by_shock"] for r in all_results
+                 if not r["welf_by_shock"].empty]
+    if _wbs_list:
+        _wbs_val_cols = ["CV_g0", "CV_g1", "CV_g2",
+                         "CV_err_g0", "CV_err_g1", "CV_err_g2"]
+        welf_by_shock_agg = _agg_df(_wbs_list, _wbs_val_cols)
+    else:
+        welf_by_shock_agg = pd.DataFrame()
 
     curve_keys  = list(all_results[0]["curves_ces"].keys())
     curves_mean = {k: np.mean([r["curves_ces"][k] for r in all_results
@@ -601,6 +652,7 @@ def aggregate(all_results: list) -> dict:
 
     return dict(
         acc_agg=acc_agg, elast_agg=elast_agg, welf_agg=welf_agg,
+        welf_by_shock_agg=welf_by_shock_agg,
         curves_mean=curves_mean, curves_se=curves_se,
         curves_ces_full_mean=curves_ces_full_mean,
         curves_ces_full_se=curves_ces_full_se,
@@ -803,6 +855,136 @@ def make_tables(agg: dict, cfg: dict) -> None:
         tex_lines.append(f"    {mn} & {cv_str} & {err_str} \\\\")
     tex_lines += [r"    \bottomrule", r"  \end{tabular}", r"  \end{threeparttable}",
                   r"\end{table}", ""]
+
+    # ── Welfare by shock table (CES DGP, three 10% single-good shocks) ───────
+    welf_by_shock_agg = agg.get("welf_by_shock_agg", pd.DataFrame())
+    if not welf_by_shock_agg.empty:
+        welf_by_shock_agg.round(6).to_csv(
+            f"{out_dir}/table_welfare_by_shock.csv", index=False)
+
+        _MODEL_GROUPS = [
+            ("Benchmark", ["Ground Truth"]),
+            ("Traditional Models", ["LA-AIDS", "Logit-IV", "QUAIDS"]),
+            ("Semi-parametric", ["Series Estm."]),
+            ("Neural Demand", [
+                "Neural Demand (static)",
+                "Neural Demand (habit)",
+                "Neural Demand (CF)",
+                "Neural Demand (habit, CF)",
+            ]),
+        ]
+        _MODEL_DISPLAY_WELFARE = {
+            "Ground Truth":              "Ground Truth",
+            "LA-AIDS":                   "LA-AIDS",
+            "Logit-IV":                  "Logit-IV",
+            "QUAIDS":                    "QUAIDS",
+            "Series Estm.":              "Series Estm.",
+            "Neural Demand (static)":    "Static",
+            "Neural Demand (habit)":     "Habit",
+            "Neural Demand (CF)":        "Static, CF",
+            "Neural Demand (habit, CF)": "Habit, CF",
+        }
+
+        ces_wbs = welf_by_shock_agg[welf_by_shock_agg["DGP"] == "CES"]
+
+        def _cv_cell(val, se, d=2):
+            if np.isnan(val): return "---"
+            return f"${val:.{d}f}$"
+
+        def _se_cell(se, d=2):
+            if np.isnan(se): return ""
+            return f"$({se:.{d}f})$"
+
+        wbs_lines = [
+            r"\begin{table}[htbp]",
+            r"  \centering",
+            r"  \caption{Compensating Variation --- Simulation (CES DGP)}",
+            r"  \label{tab:sim_welfare_updated}",
+            r"  \begin{tabular}{llllcc}",
+            r"    \toprule",
+            r"    & \multicolumn{4}{c}{\textbf{Compensating Variation (CV)}} & \textbf{Error vs.} \\",
+            r"    \cmidrule(lr){2-5}",
+            r"    \textbf{Model} & \textbf{Shock $g_0$} & \textbf{Shock $g_1$} & \textbf{Shock $g_2$} & \textbf{Average} & \textbf{Truth (\%)} \\",
+            r"    \midrule",
+        ]
+
+        for group_label, group_models in _MODEL_GROUPS:
+            wbs_lines.append(
+                rf"    \multicolumn{{2}}{{l}}{{\textit{{{group_label}}}}} & & & & \\"
+            )
+            for mn in group_models:
+                sub = ces_wbs[ces_wbs["Model"] == mn]
+                if sub.empty:
+                    continue
+                row = sub.iloc[0]
+                disp = _MODEL_DISPLAY_WELFARE.get(mn, mn)
+
+                cv0  = float(row.get("CV_g0",    np.nan))
+                cv1  = float(row.get("CV_g1",    np.nan))
+                cv2  = float(row.get("CV_g2",    np.nan))
+                se0  = float(row.get("CV_g0_se", np.nan))
+                se1  = float(row.get("CV_g1_se", np.nan))
+                se2  = float(row.get("CV_g2_se", np.nan))
+
+                # Average CV and its SE (SE of mean of 3 shocks)
+                cv_vals = [v for v in [cv0, cv1, cv2] if not np.isnan(v)]
+                cv_avg  = np.mean(cv_vals) if cv_vals else np.nan
+                se_vals = [s for s in [se0, se1, se2] if not np.isnan(s)]
+                se_avg  = (np.sqrt(sum(s**2 for s in se_vals)) / len(se_vals)
+                           if se_vals else np.nan)
+
+                # Average error = mean of per-shock pct errors
+                err_vals = [float(row.get(f"CV_err_g{g}", np.nan)) for g in range(3)]
+                err_valid = [e for e in err_vals if not np.isnan(e)]
+                err_avg   = np.mean(err_valid) if err_valid else np.nan
+
+                err_str = ("---" if mn == "Ground Truth"
+                           else (f"{err_avg:.1f}\\%" if not np.isnan(err_avg) else "---"))
+
+                wbs_lines.append(
+                    f"    {disp} & "
+                    f"{_cv_cell(cv0, se0)} & "
+                    f"{_cv_cell(cv1, se1)} & "
+                    f"{_cv_cell(cv2, se2)} & "
+                    f"{_cv_cell(cv_avg, se_avg)} & "
+                    f"{err_str} \\\\"
+                )
+                wbs_lines.append(
+                    f"                 & "
+                    f"{_se_cell(se0)} & "
+                    f"{_se_cell(se1)} & "
+                    f"{_se_cell(se2)} & "
+                    f"{_se_cell(se_avg)} & \\\\"
+                )
+            wbs_lines.append(r"    \addlinespace")
+
+        # Remove trailing \addlinespace
+        if wbs_lines and wbs_lines[-1] == r"    \addlinespace":
+            wbs_lines.pop()
+
+        wbs_lines += [
+            r"    \bottomrule",
+            r"  \end{tabular}",
+            r"  \begin{tablenotes}",
+            r"    Standard errors are reported in parentheses below the estimates."
+            r" Simulations based on CES DGP with three 10\% one-good shocks.",
+            r"  \end{tablenotes}",
+            r"\end{table}",
+        ]
+
+        # Append to the main sim_tables.tex bundle as well
+        tex_lines += wbs_lines + [""]
+
+        wbs_tex_path = f"{out_dir}/table_welfare_by_shock.tex"
+        with open(wbs_tex_path, "w") as _f:
+            _f.write(
+                "% ============================================================\n"
+                "% Neural Demand — Welfare by Shock (auto-generated)\n"
+                f"% N_RUNS = {N_RUNS}\n"
+                "% ============================================================\n\n"
+            )
+            _f.write("\n".join(wbs_lines) + "\n")
+        print(f"  Saved by-shock welfare table to {wbs_tex_path}")
 
     # ── Figure environments ───────────────────────────────────────────────────
     for fn, cap, lbl in [

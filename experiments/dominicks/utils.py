@@ -64,7 +64,7 @@ def pred(spec: str, p, y,
 
     if spec == 'aids':   return kw['aids'].predict(p, y)
     if spec == 'blp':
-        return kw['blp'].predict(p)[:, :G]        # inside market shares (N, G); drop outside-option col
+        return kw['blp'].predict(p, y)[:, :G]     # inside market shares (N, G); drop outside-option col
     if spec == 'quaids': return kw['quaids'].predict(p, y)
     if spec == 'series': return kw['series'].predict(p, y)
 
@@ -528,7 +528,7 @@ _get_metrics_dom = get_metrics
 _kl_div_dom = kl_div
 
 MODEL_NAMES_STATIC = [
-    "LA-AIDS", "BLP (IV)", "QUAIDS", "Series Est.",
+    "LA-AIDS", "Logit-IV", "QUAIDS", "Series Est.",
     "Linear Demand (Shared)", "Linear Demand (GoodSpec)", "Linear Demand (Orth)",
     "Neural Demand (static)", "Neural Demand (window)",
 ]
@@ -544,7 +544,7 @@ ALL_MODEL_NAMES = MODEL_NAMES_CF
 # Map: paper name → internal spec used by pred()
 _SPEC_MAP = {
     "LA-AIDS":                       "aids",
-    "BLP (IV)":                      "blp",
+    "Logit-IV":                      "blp",
     "QUAIDS":                        "quaids",
     "Series Est.":                   "series",
     "Linear Demand (Shared)":                  "linear-demand",
@@ -565,7 +565,7 @@ _SPEC_MAP = {
 
 STYLE = {
     "LA-AIDS":                    dict(color="#E53935", ls="--", lw=1.8),
-    "BLP (IV)":                   dict(color="#8E24AA", ls="--", lw=1.8),
+    "Logit-IV":                   dict(color="#8E24AA", ls="--", lw=1.8),
     "QUAIDS":                     dict(color="#43A047", ls="-.", lw=1.8),
     "Series Est.":                dict(color="#FB8C00", ls=":",  lw=1.8),
     "Linear Demand (Shared)":               dict(color="#039BE5", ls=":",  lw=1.5),

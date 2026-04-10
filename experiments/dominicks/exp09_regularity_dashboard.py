@@ -170,6 +170,14 @@ def compute_diagnostics(model, p, y, xb=None, qp=None, store_idx=None,
     diff = S - S_T
     D_sym = torch.norm(diff, dim=(1, 2)) # Frobenius norm per sample
     
+    # 1b. Own-price monotonicity: ∂w_g/∂log p_g should be ≤ 0 for all g.
+    # J_w_lp[:, g, g] is the own-price log-derivative of share g.
+    diag_J = torch.stack(
+        [J_w_lp[:, g, g] for g in range(G)], dim=1
+    )  # (B, G) — same as torch.diagonal(J_w_lp, dim1=1, dim2=2)
+    is_nonmono = (diag_J > 0).float()       # 1 where share rises with own price
+    D_mono = is_nonmono                      # (B, G)
+
     # 2. Curvature: lambda_max((S + S^T)/2)
     S_tilde = 0.5 * (S + S_T)
     # torch.linalg.eigvalsh for symmetric matrices
@@ -196,10 +204,11 @@ def compute_diagnostics(model, p, y, xb=None, qp=None, store_idx=None,
     D_hom = torch.stack(D_hom_list).mean(0) # Average over c values for each sample
     
     return {
-        "D_sym": D_sym.detach().cpu().numpy(),
-        "is_pos": is_pos.detach().cpu().numpy(),
-        "D_curv": D_curv.detach().cpu().numpy(),
-        "D_hom": D_hom.detach().cpu().numpy()
+        "D_sym":   D_sym.detach().cpu().numpy(),
+        "is_pos":  is_pos.detach().cpu().numpy(),
+        "D_curv":  D_curv.detach().cpu().numpy(),
+        "D_hom":   D_hom.detach().cpu().numpy(),
+        "D_mono":  D_mono.detach().cpu().numpy(),   # (B, G): 1 where non-monotone
     }
 
 
@@ -361,6 +370,7 @@ def run(splits, cfg):
             test_kl = np.sum(w_true * np.log(w_true / w_pred), axis=1).mean()
 
         # Aggregation
+        # D_mono shape is (B, G); average over observations and goods
         res = {
             "Model": name,
             "Test KL": test_kl,
@@ -368,7 +378,8 @@ def run(splits, cfg):
             "max D_sym": diags["D_sym"].max(),
             "Pr(pos curv)": diags["is_pos"].mean(),
             "E[D_curv]": diags["D_curv"].mean(),
-            "E[D_hom]": diags["D_hom"].mean()
+            "E[D_hom]": diags["D_hom"].mean(),
+            "Pr(non-mono)": diags["D_mono"].mean(),   # fraction violating own-price mono
         }
         results.append(res)
         
@@ -376,7 +387,8 @@ def run(splits, cfg):
         print(f"    KL={res['Test KL']:.4f}  "
               f"D_sym={res['E[D_sym]']:.4f} (max {res['max D_sym']:.4f})  "
               f"PosCurv={res['Pr(pos curv)']:.1%}  "
-              f"D_hom={res['E[D_hom]']:.4f}")
+              f"D_hom={res['E[D_hom]']:.4f}  "
+              f"NonMono={res['Pr(non-mono)']:.1%}")
 
     # ── Table Generation ─────────────────────────────────────────────────────
     df = pd.DataFrame(results)
@@ -400,11 +412,11 @@ def run(splits, cfg):
         f.write(r"\centering" + "\n")
         f.write(r"\caption{Near-integrability diagnostics (``regularity dashboard'').}" + "\n")
         f.write(r"\label{tab:regularity_dashboard}" + "\n")
-        f.write(r"\begin{tabular}{lcccccc}" + "\n")
+        f.write(r"\begin{tabular}{lccccccc}" + "\n")
         f.write(r"\toprule" + "\n")
         f.write(r"Model & Test KL & $\mathbb E[D_{\mathrm{sym}}]$ & $\max D_{\mathrm{sym}}$ & "
                 r"$\Pr(\lambda_{\max}(\tilde S)>0)$ & $\mathbb E[D_{\mathrm{curv}}]$ & "
-                r"$\mathbb E[D_{\mathrm{hom}}]$ \\" + "\n")
+                r"$\mathbb E[D_{\mathrm{hom}}]$ & $\Pr(\text{non-mono})$ \\" + "\n")
         f.write(r"\midrule" + "\n")
         
         for _, row in df.iterrows():
@@ -415,12 +427,13 @@ def run(splits, cfg):
             pp = f"{row['Pr(pos curv)']:.3f}"
             dc = f"{row['E[D_curv]']:.4f}"
             dh = f"{row['E[D_hom]']:.4f}"
+            nm = f"{row['Pr(non-mono)']:.3f}"
             
             # Add line space before FE models
             if "FE" in row['Model'] and "FE" not in df.iloc[df.index.get_loc(row.name)-1]['Model']:
                 f.write(r"\addlinespace" + "\n")
                 
-            f.write(f"{row['Model']} & {kl} & {ds} & {dm} & {pp} & {dc} & {dh} \\\\" + "\n")
+            f.write(f"{row['Model']} & {kl} & {ds} & {dm} & {pp} & {dc} & {dh} & {nm} \\\\" + "\n")
             
         f.write(r"\bottomrule" + "\n")
         f.write(r"\end{tabular}" + "\n")
