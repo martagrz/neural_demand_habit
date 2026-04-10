@@ -7,9 +7,9 @@ CES,Linear Demand (Shared),0.15411,0.140948,0.000298,0.000282
 CES,Linear Demand (GoodSpec),0.155316,0.141535,0.000402,0.000343
 CES,Linear Demand (Orth),0.023977,0.017757,0.000432,0.000348
 CES,Neural Demand (static),0.00063,0.000407,3.8e-05,1.8e-05
-CES,Neural Demand (habit),0.001091,0.000723,9.7e-05,5.6e-05
-CES,Neural Demand (CF),0.000747,0.000486,1.9e-05,1.3e-05
-CES,"Neural Demand (habit, CF)",0.000804,0.000543,3.2e-05,2.2e-05
+CES,Neural Demand (habit),0.001102,0.000723,9.1e-05,5.6e-05
+CES,Neural Demand (CF),0.000748,0.000488,1.8e-05,1.2e-05
+CES,"Neural Demand (habit, CF)",0.000777,0.000527,1.4e-05,1.4e-05
 CES,Ground Truth,0.0,0.0,0.0,0.0
 Quasilinear,LA-AIDS,2.6e-05,1.2e-05,0.0,0.0
 Quasilinear,BLP (IV),0.005771,0.003335,0.0,0.0
@@ -18,10 +18,10 @@ Quasilinear,Series Estm.,2.9e-05,1.5e-05,0.0,0.0
 Quasilinear,Linear Demand (Shared),0.471594,0.444453,0.000788,0.000728
 Quasilinear,Linear Demand (GoodSpec),0.471845,0.444708,0.000762,0.00072
 Quasilinear,Linear Demand (Orth),0.007179,0.006765,1.8e-05,1.7e-05
-Quasilinear,Neural Demand (static),1.3e-05,5e-06,1e-06,0.0
+Quasilinear,Neural Demand (static),1.3e-05,6e-06,0.0,0.0
 Quasilinear,Neural Demand (habit),1.3e-05,5e-06,0.0,0.0
-Quasilinear,Neural Demand (CF),1.4e-05,6e-06,1e-06,0.0
-Quasilinear,"Neural Demand (habit, CF)",1.5e-05,6e-06,0.0,0.0
+Quasilinear,Neural Demand (CF),1.5e-05,6e-06,1e-06,0.0
+Quasilinear,"Neural Demand (habit, CF)",1.4e-05,6e-06,0.0,0.0
 Quasilinear,Ground Truth,0.0,0.0,0.0,0.0
 Leontief,LA-AIDS,0.018841,0.013141,0.000194,0.00014
 Leontief,BLP (IV),0.02762,0.021452,0.000301,0.000245
@@ -30,10 +30,10 @@ Leontief,Series Estm.,0.003188,0.002036,2.2e-05,1.6e-05
 Leontief,Linear Demand (Shared),0.090586,0.078757,0.00052,0.000415
 Leontief,Linear Demand (GoodSpec),0.094646,0.081513,0.000595,0.000463
 Leontief,Linear Demand (Orth),0.026583,0.020543,0.000458,0.000372
-Leontief,Neural Demand (static),0.000756,0.000515,8.3e-05,5.9e-05
-Leontief,Neural Demand (habit),0.000762,0.000516,2.4e-05,1.1e-05
-Leontief,Neural Demand (CF),0.000816,0.000519,5e-05,2.6e-05
-Leontief,"Neural Demand (habit, CF)",0.000856,0.000576,4.8e-05,2e-05
+Leontief,Neural Demand (static),0.000782,0.000525,7.5e-05,5.5e-05
+Leontief,Neural Demand (habit),0.00078,0.00052,1.7e-05,7e-06
+Leontief,Neural Demand (CF),0.0008,0.000512,4.6e-05,2.4e-05
+Leontief,"Neural Demand (habit, CF)",0.000826,0.00057,3.6e-05,1.9e-05
 Leontief,Ground Truth,0.0,0.0,0.0,0.0
 Stone–Geary,LA-AIDS,0.005812,0.004219,4.2e-05,3.3e-05
 Stone–Geary,BLP (IV),0.004778,0.003963,2.8e-05,2e-05
@@ -42,10 +42,10 @@ Stone–Geary,Series Estm.,0.001124,0.000733,6e-06,7e-06
 Stone–Geary,Linear Demand (Shared),0.123427,0.109837,0.000115,0.000282
 Stone–Geary,Linear Demand (GoodSpec),0.123517,0.110005,0.000127,0.000288
 Stone–Geary,Linear Demand (Orth),0.003298,0.002334,2.9e-05,2.5e-05
-Stone–Geary,Neural Demand (static),0.001879,0.001257,9.3e-05,7.6e-05
-Stone–Geary,Neural Demand (habit),0.002153,0.001403,6.3e-05,5e-05
-Stone–Geary,Neural Demand (CF),0.001943,0.001317,0.000116,7.5e-05
-Stone–Geary,"Neural Demand (habit, CF)",0.001861,0.001221,5.5e-05,4.6e-05
+Stone–Geary,Neural Demand (static),0.001879,0.001252,9.3e-05,7.8e-05
+Stone–Geary,Neural Demand (habit),0.002145,0.001413,7e-05,4.4e-05
+Stone–Geary,Neural Demand (CF),0.001913,0.001294,0.00012,7.9e-05
+Stone–Geary,"Neural Demand (habit, CF)",0.00187,0.00123,5.6e-05,4.6e-05
 Stone–Geary,Ground Truth,0.0,0.0,0.0,0.0
 Habit,LA-AIDS,0.046254,0.034241,0.001165,0.000687
 Habit,BLP (IV),0.047714,0.035493,0.001182,0.000706
@@ -54,10 +54,10 @@ Habit,Series Estm.,0.045529,0.033403,0.001134,0.000713
 Habit,Linear Demand (Shared),0.14856,0.133521,0.000482,0.000677
 Habit,Linear Demand (GoodSpec),0.14935,0.133982,0.00052,0.000687
 Habit,Linear Demand (Orth),0.047958,0.035725,0.001191,0.000718
-Habit,Neural Demand (static),0.045653,0.033432,0.001288,0.000821
-Habit,Neural Demand (habit),0.01969,0.014826,0.000333,0.000254
-Habit,Neural Demand (CF),0.045482,0.033215,0.001219,0.000796
-Habit,"Neural Demand (habit, CF)",0.016367,0.012052,0.000158,0.000161
+Habit,Neural Demand (static),0.045962,0.033589,0.001272,0.000808
+Habit,Neural Demand (habit),0.019657,0.014792,0.00035,0.000271
+Habit,Neural Demand (CF),0.045096,0.033065,0.001223,0.000805
+Habit,"Neural Demand (habit, CF)",0.016343,0.012053,0.000172,0.000159
 Habit,Ground Truth,0.0,0.0,0.0,0.0
 Endogenous CES,LA-AIDS,0.0861,0.066813,0.001782,0.001287
 Endogenous CES,BLP (IV),0.029018,0.021694,0.001889,0.001229
@@ -66,8 +66,8 @@ Endogenous CES,Series Estm.,0.08696,0.067331,0.002476,0.001692
 Endogenous CES,Linear Demand (Shared),0.164745,0.142079,0.000385,0.000194
 Endogenous CES,Linear Demand (GoodSpec),0.165236,0.142267,0.000427,0.000214
 Endogenous CES,Linear Demand (Orth),0.086293,0.067073,0.001205,0.000985
-Endogenous CES,Neural Demand (static),0.142139,0.104905,0.003898,0.002935
-Endogenous CES,Neural Demand (habit),0.191151,0.146333,0.001271,0.001645
-Endogenous CES,Neural Demand (CF),0.040624,0.031006,0.004723,0.003312
-Endogenous CES,"Neural Demand (habit, CF)",0.047936,0.036303,0.002985,0.002335
+Endogenous CES,Neural Demand (static),0.144086,0.105986,0.005343,0.003781
+Endogenous CES,Neural Demand (habit),0.196904,0.15009,0.004596,0.00382
+Endogenous CES,Neural Demand (CF),0.041529,0.031749,0.004454,0.003084
+Endogenous CES,"Neural Demand (habit, CF)",0.047048,0.035637,0.002672,0.002103
 Endogenous CES,Ground Truth,0.0,0.0,0.0,0.0

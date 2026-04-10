@@ -761,11 +761,14 @@ def run(args):
             if run_extended:
                 full_benchmark_rows.append(row)
 
-        print(
-            f"[exp12] K={k:>3d}  "
-            f"BLP_RMSE={fit['BLP (IV)']['rmse']:.6f}  "
-            f"NDS_RMSE={fit['Neural Demand (static)']['rmse']:.6f}"
-        )
+        _blp_str = (f"BLP_RMSE={fit['BLP (IV)']['rmse']:.6f}  "
+                    if "BLP (IV)" in fit else "")
+        _nds_key = next((k2 for k2 in ("Neural Demand (static)",
+                                        "Neural Demand (habit, FE, CF)")
+                         if k2 in fit), None)
+        _nds_str = (f"NDS_RMSE={fit[_nds_key]['rmse']:.6f}"
+                    if _nds_key else "")
+        print(f"[exp12] K={k:>3d}  {_blp_str}{_nds_str}")
 
     scaling_df = pd.DataFrame(scaling_rows).sort_values(["n_goods", "model"]).reset_index(drop=True)
     bench_df = pd.DataFrame(full_benchmark_rows).sort_values(["model"]).reset_index(drop=True)

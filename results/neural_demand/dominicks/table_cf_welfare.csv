@@ -8,5 +8,5 @@ Linear Demand (GoodSpec),-0.281783,0.0
 Linear Demand (Orth),-0.240706,0.0
 Neural Demand (static),-0.237586,0.000775
 Neural Demand (habit),-0.210475,0.000402
-Neural Demand (CF),-0.227475,0.000814
-"Neural Demand (habit, CF)",-0.214701,0.000635
+Neural Demand (CF),-0.226573,0.000325
+"Neural Demand (habit, CF)",-0.214814,0.000832

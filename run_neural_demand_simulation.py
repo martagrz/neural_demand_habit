@@ -90,6 +90,8 @@ def _parse_args():
                    help="Load pre-trained models from cache (default: train from scratch)")
     p.add_argument("--exp", nargs="+", type=str, default=None,
                    help="Experiments to run: 01 02 03 04 (default: all)")
+    p.add_argument("--epochs", type=int, default=None,
+                   help="Override training epochs (default: 10000)")
     return p.parse_args()
 
 
@@ -823,6 +825,10 @@ def main():
 
     # If --load is NOT set, force retraining (ignore existing cache but save new models)
     cfg["force_retrain"] = not args.load
+
+    if args.epochs is not None:
+        cfg["EPOCHS"] = args.epochs
+        print(f"[epochs override] Using EPOCHS={args.epochs}")
 
     os.makedirs(cfg["out_dir"], exist_ok=True)
     os.makedirs(cfg["fig_dir"], exist_ok=True)
