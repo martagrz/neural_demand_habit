@@ -48,7 +48,7 @@ from src.models.simulation import (
     StoneGearyConsumer, HabitFormationConsumer,
     StaticND, HabitND,
         compute_xbar_e2e,
-    cf_first_stage,
+    cf_first_stage, cf_first_stage_full,
     features_shared, features_good_specific, features_orthogonalised,
     run_linear_irl,
     train_neural_irl,
@@ -139,58 +139,54 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
     cross_elast_ces   = {}
     train_hists       = {}     # {dgp_name: {model_name: hist}}
 
+    dgp_filter = cfg.get("dgp_filter", None)
     for dgp_name, consumer in DGPs.items():
+        if dgp_filter is not None and dgp_name != dgp_filter:
+            continue
         if verbose:
             print(f"  DGP: {dgp_name}")
 
         # ── Data Generation ──────────────────────────────────────────────────
         if dgp_name == "Endogenous CES":
-            # Special handling for Endogenous CES DGP
-            # p = Z + nu + xi, with xi correlated with utility shock
-            # We generate new data specifically for this DGP
-            
-            # 1. Generate shocks
-            # xi: endogenous shock (common to price and utility)
-            # nu: idiosyncratic supply shock
-            xi = np.random.normal(0, 0.5, (N, 3))
-            nu = np.random.normal(0, 0.1, (N, 3))
-            
-            # 2. Generate Prices: p = Z + nu + xi
-            # reusing the Z from shared draws to keep instrument valid
-            p_endo = np.clip(Z + nu + xi, 0.1, None)
-            
-            # 3. Generate Demand with correlated utility shocks
-            # CES alpha = base_alpha * exp(xi)
-            # We use the base CESConsumer but modify alpha per observation
-            # CESConsumer.solve_demand doesn't support per-obs alpha easily without modification
-            # So we implement the demand function locally here
-            
+            # ── Endogenous CES with log-linear (multiplicative) price endogeneity ──
+            #
+            # Price equation:  log(p_j) = log(Z_j) + xi_j + nu_j
+            #                  i.e.  p_j = Z_j * exp(xi_j + nu_j)
+            #
+            # This is the natural Hausman IV structure: log-prices in other stores
+            # are the instruments, so the CF first stage log(p) ~ log(Z) is exactly
+            # specified.  Logit-IV uses raw p (not log p) in its second stage, so it
+            # faces a double misspecification:
+            #   (a) Linear first stage in levels is wrong for a log-linear price DGP.
+            #   (b) Linear second stage log(s/s0) ~ p̂ is wrong because CES shares
+            #       depend on log(p), not p; this error compounds at high sigma.
+            #
+            # rho_ces = 0.7 (sigma ≈ 3.33) gives a strongly curved denominator so
+            # that the logit's linear-in-prices second stage is visibly misspecified
+            # over the wider price support used here (Z ~ U[0.5, 8]).
+
+            Z_endo = np.random.uniform(0.5, 8.0, (N, 3))   # wider than shared Z
+            xi = np.random.normal(0, 0.3, (N, 3))           # endogenous taste shock
+            nu = np.random.normal(0, 0.05, (N, 3))          # idiosyncratic supply shock
+
+            p_endo = np.clip(Z_endo * np.exp(xi + nu), 0.05, None)
+
             base_alpha = np.array([0.4, 0.4, 0.2])
-            rho_ces = 0.45
-            sigma = 1.0 / (1.0 - rho_ces)
-            
-            # alpha_obs: (N, 3)
-            # We add xi to log-alpha. 
-            # Note: xi is correlated with price (positive correlation -> simultaneity)
+            rho_ces    = 0.7                         # sigma ≈ 3.33: more nonlinear
+            sigma_ces  = 1.0 / (1.0 - rho_ces)
+
             alpha_obs = base_alpha[None, :] * np.exp(xi)
-            
-            # Calculate shares
-            # w_j = (alpha_j^sigma * p_j^(1-sigma)) / sum(...)
-            num = alpha_obs ** sigma * p_endo ** (1.0 - sigma)
-            w_endo = num / num.sum(axis=1, keepdims=True)
-            
-            # Set training data
-            curr_p_pre  = p_endo
+            num       = alpha_obs ** sigma_ces * p_endo ** (1.0 - sigma_ces)
+            w_endo    = num / num.sum(axis=1, keepdims=True)
+
+            curr_p_pre   = p_endo
             curr_w_train = w_endo
-            curr_Z      = Z  # Instrument is Z
-            
-            # For post-shock (welfare/elasticity), we need structural demand (xi=0)
-            # or we keep xi fixed? 
-            # Usually we evaluate at mean prices and mean shocks (xi=0).
-            # Let's use the standard p_post (from shared) for evaluation consistency,
-            # but we need to know the "true" demand at p_post.
-            # True structural demand at p_post (with xi=0)
-            curr_w_post = consumer.solve_demand(p_post, income)
+            curr_Z       = Z_endo
+
+            # Structural demand at the shared p_post prices (xi = 0, base_alpha).
+            # All models are evaluated at the same p_post for comparability.
+            num_post    = base_alpha[None, :] ** sigma_ces * p_post ** (1.0 - sigma_ces)
+            curr_w_post = num_post / num_post.sum(axis=1, keepdims=True)
             
         else:
             # Standard DGPs use shared exogenous prices
@@ -207,6 +203,11 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
             w_val = val_consumer.solve_demand(p_val, y_val)
         except Exception:
             w_val = np.full((N_val, 3), 1/3)
+        # Override validation shares for Endogenous CES: use the local sigma_ces
+        # (rho=0.7) and base_alpha, not the default CESConsumer's parameters.
+        if dgp_name == "Endogenous CES":
+            _num_v = base_alpha[None, :] ** sigma_ces * p_val ** (1.0 - sigma_ces)
+            w_val  = _num_v / _num_v.sum(axis=1, keepdims=True)
 
         # ── Static benchmarks ─────────────────────────────────────────────────
         aids_m   = AIDSBench(); aids_m.fit(curr_p_pre, curr_w_train, income)
@@ -242,8 +243,10 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
             force_retrain=FORCE_RETRAIN)
 
         # ── Neural Demand (CF) ────────────────────────────────────────────────
-        # Use log(Z) for the first stage because the DGP is roughly log-linear
-        # (p = Z + nu + xi => log(p) approx log(Z)).
+        # Log-log first stage: log(p_j) ~ log(Z_j).  This is the natural spec
+        # for Hausman IVs and is correctly specified for the multiplicative
+        # Endogenous CES DGP where log(p) = log(Z) + xi + nu.  For all other
+        # DGPs prices are exogenous so the residuals are negligible regardless.
         v_hat_tr, _ = cf_first_stage(np.log(np.maximum(curr_p_pre, 1e-8)),
                                      np.log(np.maximum(curr_Z, 1e-8)))
         nds_cf_m = StaticND(n_goods=3, hidden_dim=HIDDEN, n_cf=3)

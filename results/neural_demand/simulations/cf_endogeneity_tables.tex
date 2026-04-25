@@ -1,21 +1,21 @@
 % ================================================================
 % Neural Demand Paper — CF Endogeneity Tables (auto-generated)
-% N_RUNS = 2
+% N_RUNS = 5
 % ================================================================
 
 \begin{table}[htbp]
   \centering
-  \caption{Control-Function RMSE — CES DGP (mean $\pm$ SE, 2 runs)}
+  \caption{Control-Function RMSE — CES DGP (mean $\pm$ SE, 5 runs)}
   \label{tab:cf_endogeneity_ces}
   \begin{threeparttable}
-  \begin{tabular}{lcc}
+  \begin{tabular}{lcccc}
     \toprule
-    \textbf{Model} & $\rho=0.0$ & $\rho=0.6$ \\
+    \textbf{Model} & $\rho=0.0$ & $\rho=0.3$ & $\rho=0.6$ & $\rho=0.9$ \\
     \midrule
-    Neural Demand (static) & $0.00245 \pm 0.00011$ & $0.00236 \pm 0.00007$ \\
-    Neural Demand (CF) & $0.00304 \pm 0.00051$ & $0.00273 \pm 0.00018$ \\
-    Neural Demand (habit) & $0.00382 \pm 0.00126$ & $0.00364 \pm 0.00010$ \\
-    Neural Demand (habit, CF) & $0.00600 \pm 0.00041$ & $0.00403 \pm 0.00017$ \\
+    Neural Demand (static) & $0.00035 \pm 0.00002$ & $0.00032 \pm 0.00001$ & $0.00034 \pm 0.00001$ & $0.00038 \pm 0.00002$ \\
+    Neural Demand (CF) & $0.00036 \pm 0.00003$ & $0.00035 \pm 0.00002$ & $0.00034 \pm 0.00003$ & $0.00035 \pm 0.00002$ \\
+    Neural Demand (habit) & $0.00048 \pm 0.00004$ & $0.00046 \pm 0.00003$ & $0.00045 \pm 0.00001$ & $0.00051 \pm 0.00002$ \\
+    Neural Demand (habit, CF) & $0.00046 \pm 0.00002$ & $0.00052 \pm 0.00003$ & $0.00047 \pm 0.00003$ & $0.00046 \pm 0.00003$ \\
     \bottomrule
   \end{tabular}
   \begin{tablenotes}\small
@@ -27,17 +27,17 @@
 
 \begin{table}[htbp]
   \centering
-  \caption{Control-Function RMSE — Habit DGP (mean $\pm$ SE, 2 runs)}
+  \caption{Control-Function RMSE — Habit DGP (mean $\pm$ SE, 5 runs)}
   \label{tab:cf_endogeneity_habit}
   \begin{threeparttable}
-  \begin{tabular}{lcc}
+  \begin{tabular}{lcccc}
     \toprule
-    \textbf{Model} & $\rho=0.0$ & $\rho=0.6$ \\
+    \textbf{Model} & $\rho=0.0$ & $\rho=0.3$ & $\rho=0.6$ & $\rho=0.9$ \\
     \midrule
-    Neural Demand (static) & $0.02629 \pm 0.00019$ & $0.02661 \pm 0.00038$ \\
-    Neural Demand (CF) & $0.02577 \pm 0.00067$ & $0.02727 \pm 0.00062$ \\
-    Neural Demand (habit) & $0.02259 \pm 0.00245$ & $0.02237 \pm 0.00061$ \\
-    Neural Demand (habit, CF) & $0.02105 \pm 0.00020$ & $0.02310 \pm 0.00155$ \\
+    Neural Demand (static) & $0.02232 \pm 0.00047$ & $0.02132 \pm 0.00046$ & $0.02285 \pm 0.00073$ & $0.02227 \pm 0.00089$ \\
+    Neural Demand (CF) & $0.02261 \pm 0.00044$ & $0.02121 \pm 0.00045$ & $0.02291 \pm 0.00067$ & $0.02247 \pm 0.00085$ \\
+    Neural Demand (habit) & $0.02028 \pm 0.00082$ & $0.01551 \pm 0.00064$ & $0.01716 \pm 0.00067$ & $0.01996 \pm 0.00117$ \\
+    Neural Demand (habit, CF) & $0.02020 \pm 0.00079$ & $0.01545 \pm 0.00059$ & $0.01726 \pm 0.00076$ & $0.01986 \pm 0.00109$ \\
     \bottomrule
   \end{tabular}
   \begin{tablenotes}\small

@@ -1,11 +1,15 @@
 """
-Experiment 12: Neural Demand scaling benchmark across goods counts.
+Experiment 12: Dominick's per-item (UPC-level) Logit-IV vs Neural Demand benchmarks.
 
 This experiment implements:
 1) UPC-level analgesics panel construction (all UPCs available in upcana/wana),
 2) train/test evaluation using a week split,
-3) Neural Demand (static) and Neural Demand (habit, FE, CF) fitted at each K,
-4) scaling comparison across number of UPCs, reporting fit-time and test RMSE.
+3) Logit-IV with Hausman instruments and a footfall-based market size
+   (M_it = footfall_it * spend_scale) that identifies the outside-option share
+   as category non-purchase, consistent with Chintagunta (2002),
+4) Neural Demand benchmarks (static, habit, FE, CF, etc.),
+5) scaling comparison across number of UPCs, reporting fit-time, test RMSE, and
+   first-stage R² for the Logit-IV model.
 """
 
 from __future__ import annotations
@@ -214,8 +218,8 @@ def _build_selected_arrays(
     cfg: dict,
     nest_maps: dict | None = None,
 ) -> dict:
-    # Build complete store-week grid (no footfall needed here).
-    sw = upc_sw[["STORE", "WEEK"]].drop_duplicates()
+    # Build complete store-week grid including footfall for market-size estimation.
+    sw = upc_sw[["STORE", "WEEK", "FOOTFALL"]].drop_duplicates()
     sw = sw.sort_values(["STORE", "WEEK"]).reset_index(drop=True)
     base = sw.assign(key=1).merge(
         pd.DataFrame({"UPC": selected_upcs, "key": 1}),
@@ -240,6 +244,7 @@ def _build_selected_arrays(
 
     prices = dat.pivot_table(index=["STORE", "WEEK"], columns="UPC", values="PX", aggfunc="first")
     revs = dat.pivot_table(index=["STORE", "WEEK"], columns="UPC", values="REV", aggfunc="sum").fillna(0.0)
+    foot = sw.set_index(["STORE", "WEEK"])["FOOTFALL"].reindex(prices.index)
 
     prices = prices[selected_upcs]
     revs = revs[selected_upcs]
@@ -253,29 +258,29 @@ def _build_selected_arrays(
     w = np.clip(w, 1e-8, 1.0)
     w /= w.sum(axis=1, keepdims=True)
 
-    # Outside option from total category revenue.
-    # For each store-week, sum revenue over ALL UPCs in the panel (not just the
-    # selected K), then attribute the remainder to the outside good.  This makes
-    # the outside-option share fully data-driven and avoids the arbitrary
-    # footfall × spend_scale market-size estimator.
-    sw_cat_rev = (
-        upc_sw.groupby(["STORE", "WEEK"], as_index=False)["REV"]
-        .sum()
-        .rename(columns={"REV": "REV_TOTAL"})
-    )
-    sw_idx = prices.index.to_frame(index=False)  # DataFrame with STORE, WEEK columns
-    r_total_sw = sw_idx.merge(sw_cat_rev, on=["STORE", "WEEK"], how="left")["REV_TOTAL"].to_numpy(dtype=float)
-    r_total_sw = np.maximum(r_total_sw, 1e-8)
-
-    r_other = np.maximum(r_total_sw - r.sum(axis=1), 0.0)   # revenue outside selected K
-    s_inside_mw = r / r_total_sw[:, None]
-    s0_mw = r_other / r_total_sw
-
-    mw = np.column_stack([s_inside_mw, s0_mw])
-    mw = np.clip(mw, 1e-8, 1.0)
-    mw /= mw.sum(axis=1, keepdims=True)
-
+    # Market size from footfall: M_it = footfall_it × spend_scale, where
+    # spend_scale is estimated on the training split only (98th percentile of
+    # per-visit category spend) to avoid look-ahead bias.
+    # The outside option s₀ = 1 − Σ s_g represents category non-purchase,
+    # consistent with the BLP/Chintagunta (2002) treatment of scanner data.
+    foot = np.maximum(foot.to_numpy(dtype=float), 1.0)
     tr_idx, te_idx = _train_test_index(week, int(cfg["test_cutoff"]))
+    spend_per_visit = r.sum(axis=1)[tr_idx] / np.maximum(foot[tr_idx], 1.0)
+    spend_scale = float(np.nanquantile(spend_per_visit[np.isfinite(spend_per_visit)], 0.98))
+    spend_scale = max(spend_scale, 1.0)
+
+    mkt_size = foot * spend_scale
+    s_inside = r / np.maximum(mkt_size[:, None], 1e-8)
+    s_inside = np.clip(s_inside, 1e-10, 1.0)
+    s_sum = s_inside.sum(axis=1, keepdims=True)
+    overflow = s_sum[:, 0] >= 0.98
+    if np.any(overflow):
+        # Rescale rows that violate the simplex for numerical stability.
+        s_inside[overflow] = s_inside[overflow] / (s_sum[overflow] / 0.98)
+        s_sum = s_inside.sum(axis=1, keepdims=True)
+    s0 = np.maximum(1.0 - s_sum[:, 0], 1e-8)[:, None]
+    mw = np.concatenate([s_inside, s0], axis=1)
+    mw = mw / np.maximum(mw.sum(axis=1, keepdims=True), 1e-8)
 
     log_w = np.log(np.maximum(w, 1e-8))
     delta0 = float(cfg.get("habit_decay", 0.7))
@@ -313,6 +318,7 @@ def _build_selected_arrays(
         tr_idx=tr_idx,
         te_idx=te_idx,
         z=z,
+        spend_scale=spend_scale,
         nest_therapeutic=(
             nest_maps["nest_therapeutic"] if nest_maps else
             np.zeros(len(selected_upcs), dtype=int)
@@ -522,40 +528,182 @@ def _fit_models(arr: dict, cfg: dict, seed: int) -> dict:
     return out
 
 
-def _plot_scaling(df: pd.DataFrame, fig_dir: str) -> None:
+_COLOR_MAP = {
+    "Neural Demand (static)": "#1E88E5",
+    "Neural Demand (habit, FE, CF)": "#8E24AA",
+    "BLP (IV, Chintagunta 2002 spec)": "#E53935",
+    "BLP (IV, Chintagunta 2002 spec, demeaned)": "#FB8C00",
+    "Nested Logit (2SLS, therapeutic nests)": "#00897B",
+    "Nested Logit (2SLS, binary nests)": "#43A047",
+}
+_MARKER_MAP = {
+    "Neural Demand (static)": "o",
+    "Neural Demand (habit, FE, CF)": "s",
+    "BLP (IV, Chintagunta 2002 spec)": "^",
+    "BLP (IV, Chintagunta 2002 spec, demeaned)": "D",
+    "Nested Logit (2SLS, therapeutic nests)": "v",
+    "Nested Logit (2SLS, binary nests)": "P",
+}
+_LS_MAP = {
+    "Neural Demand (static)": "-",
+    "Neural Demand (habit, FE, CF)": "-",
+    "BLP (IV, Chintagunta 2002 spec)": "--",
+    "BLP (IV, Chintagunta 2002 spec, demeaned)": "--",
+    "Nested Logit (2SLS, therapeutic nests)": ":",
+    "Nested Logit (2SLS, binary nests)": ":",
+}
+
+# IV/Logit models whose compute time grows as O(K³) or faster.
+_IV_MODELS = {
+    "BLP (IV, Chintagunta 2002 spec)",
+    "BLP (IV, Chintagunta 2002 spec, demeaned)",
+    "Nested Logit (2SLS, therapeutic nests)",
+    "Nested Logit (2SLS, binary nests)",
+}
+
+
+def _fit_extrapolation(df: pd.DataFrame, model: str) -> tuple[np.ndarray, np.ndarray] | None:
+    """Fit a power-law t = a * K^b to the observed (K, time) pairs for `model`.
+
+    Returns (K_fine, t_hat) arrays for plotting, or None if fewer than 2 points.
+    Uses log-log OLS: log t = log a + b * log K.
+    """
+    d = df[df["model"] == model].sort_values("n_goods")
+    d = d[(d["n_goods"] > 0) & (d["fit_time_sec"] > 0)]
+    if len(d) < 2:
+        return None
+    log_k = np.log(d["n_goods"].to_numpy(float))
+    log_t = np.log(d["fit_time_sec"].to_numpy(float))
+    b, log_a = np.polyfit(log_k, log_t, 1)
+    a = np.exp(log_a)
+    k_max = d["n_goods"].max()
+    k_fine = np.logspace(np.log10(d["n_goods"].min()), np.log10(k_max * 3), 120)
+    return k_fine, a * k_fine ** b, float(b)
+
+
+def _breakpoint_k(df: pd.DataFrame, model: str, time_limit_s: float = 3600.0) -> float | None:
+    """Extrapolate observed fit-time scaling to find K where time exceeds `time_limit_s`.
+
+    Returns the estimated K, or None if extrapolation is not possible.
+    """
+    result = _fit_extrapolation(df, model)
+    if result is None:
+        return None
+    k_fine, t_hat, _ = result
+    idx = np.searchsorted(t_hat, time_limit_s)
+    if idx >= len(k_fine):
+        return None
+    return float(k_fine[idx])
+
+
+def _plot_time_vs_goods(df: pd.DataFrame, fig_dir: str, n_train: int = 0) -> None:
+    """Separate figure: fit time vs K (log-log), with extrapolated scaling and breakpoint."""
     if df.empty:
         return
+    model_order = [m for m in _COLOR_MAP if m in df["model"].values]
+    if not model_order:
+        return
 
-    # Fixed palette: Neural Demand = solid; BLP = dashed; Nested Logit = dotted
-    color_map = {
-        "Neural Demand (static)": "#1E88E5",
-        "Neural Demand (habit, FE, CF)": "#8E24AA",
-        "BLP (IV, Chintagunta 2002 spec)": "#E53935",
-        "BLP (IV, Chintagunta 2002 spec, demeaned)": "#FB8C00",
-        "Nested Logit (2SLS, therapeutic nests)": "#00897B",
-        "Nested Logit (2SLS, binary nests)": "#43A047",
-    }
-    marker_map = {
-        "Neural Demand (static)": "o",
-        "Neural Demand (habit, FE, CF)": "s",
-        "BLP (IV, Chintagunta 2002 spec)": "^",
-        "BLP (IV, Chintagunta 2002 spec, demeaned)": "D",
-        "Nested Logit (2SLS, therapeutic nests)": "v",
-        "Nested Logit (2SLS, binary nests)": "P",
-    }
-    ls_map = {
-        "Neural Demand (static)": "-",
-        "Neural Demand (habit, FE, CF)": "-",
-        "BLP (IV, Chintagunta 2002 spec)": "--",
-        "BLP (IV, Chintagunta 2002 spec, demeaned)": "--",
-        "Nested Logit (2SLS, therapeutic nests)": ":",
-        "Nested Logit (2SLS, binary nests)": ":",
-    }
-    model_order = [m for m in color_map if m in df["model"].values]
+    fig, ax = plt.subplots(figsize=(8, 5))
+
+    for model in model_order:
+        d = df[df["model"] == model].sort_values("n_goods")
+        if d.empty:
+            continue
+        ax.plot(
+            d["n_goods"], d["fit_time_sec"],
+            marker=_MARKER_MAP[model], lw=2.0, ms=7,
+            color=_COLOR_MAP[model], ls=_LS_MAP[model], label=model,
+        )
+        # Dashed extrapolation for IV / Logit models (multiple K points needed)
+        if model in _IV_MODELS:
+            result = _fit_extrapolation(d if len(d) > 1 else df, model)
+            if result is not None:
+                k_ext, t_ext, b_exp = result
+                # Only plot the extrapolated region (beyond observed range)
+                k_obs_max = d["n_goods"].max()
+                mask = k_ext > k_obs_max
+                if mask.any():
+                    ax.plot(
+                        k_ext[mask], t_ext[mask],
+                        color=_COLOR_MAP[model], ls="--", lw=1.0, alpha=0.45,
+                    )
+
+    # Mark the 1-hour threshold
+    ax.axhline(3600, color="black", ls=":", lw=1.2, alpha=0.6, label="1-hour wall time")
+
+    # Mark √N — the point where the number of IV instruments per good equals
+    # √(training obs), a conventional weak-IV signal.  Beyond this, first-stage
+    # R² for Logit-IV typically collapses even with ridge regularisation.
+    if n_train > 0:
+        k_weak_iv = int(np.sqrt(n_train))
+        ax.axvline(k_weak_iv, color="#E53935", ls=(0, (3, 5, 1, 5)), lw=1.4, alpha=0.7,
+                   label=rf"$K = \sqrt{{N_{{train}}}} \approx {k_weak_iv}$ (weak-IV signal)")
+
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.set_xlabel("Number of UPCs ($K$)", fontsize=12)
+    ax.set_ylabel("Fit time (seconds)", fontsize=12)
+    ax.grid(alpha=0.25, which="both")
+    ax.legend(fontsize=8, loc="upper left", ncol=1)
+    fig.tight_layout()
+    for ext in ("png", "pdf"):
+        fig.savefig(
+            os.path.join(fig_dir, f"fig12_fit_time_vs_goods.{ext}"), dpi=150, bbox_inches="tight"
+        )
+    plt.close(fig)
+    print(f"  Saved: {fig_dir}/fig12_fit_time_vs_goods")
+
+
+def _plot_rmse_vs_goods(df: pd.DataFrame, fig_dir: str, n_train: int = 0) -> None:
+    """Separate figure: test RMSE vs K."""
+    if df.empty:
+        return
+    model_order = [m for m in _COLOR_MAP if m in df["model"].values]
+    if not model_order:
+        return
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+
+    for model in model_order:
+        d = df[df["model"] == model].sort_values("n_goods")
+        if d.empty:
+            continue
+        ax.plot(
+            d["n_goods"], d["rmse_test"],
+            marker=_MARKER_MAP[model], lw=2.0, ms=7,
+            color=_COLOR_MAP[model], ls=_LS_MAP[model], label=model,
+        )
+
+    if n_train > 0:
+        k_weak_iv = int(np.sqrt(n_train))
+        ax.axvline(k_weak_iv, color="#E53935", ls=(0, (3, 5, 1, 5)), lw=1.4, alpha=0.7,
+                   label=rf"$K = \sqrt{{N_{{train}}}} \approx {k_weak_iv}$ (weak-IV signal)")
+
+    ax.set_xlabel("Number of UPCs ($K$)", fontsize=12)
+    ax.set_ylabel("Test RMSE (conditional share)", fontsize=12)
+    ax.grid(alpha=0.25)
+    ax.legend(fontsize=8, loc="upper right")
+    fig.tight_layout()
+    for ext in ("png", "pdf"):
+        fig.savefig(
+            os.path.join(fig_dir, f"fig12_rmse_vs_goods.{ext}"), dpi=150, bbox_inches="tight"
+        )
+    plt.close(fig)
+    print(f"  Saved: {fig_dir}/fig12_rmse_vs_goods")
+
+
+def _plot_scaling(df: pd.DataFrame, fig_dir: str, n_train: int = 0) -> None:
+    """Combined 2-panel figure (fit time + RMSE) plus separate per-metric figures."""
+    if df.empty:
+        return
+    model_order = [m for m in _COLOR_MAP if m in df["model"].values]
+    if not model_order:
+        return
 
     fig, axes = plt.subplots(1, 2, figsize=(12, 5))
 
-    # Left: fit time (log-log scale shows polynomial scaling clearly)
+    # Left: fit time (log-log)
     ax = axes[0]
     for model in model_order:
         d = df[df["model"] == model].sort_values("n_goods")
@@ -563,16 +711,20 @@ def _plot_scaling(df: pd.DataFrame, fig_dir: str) -> None:
             continue
         ax.plot(
             d["n_goods"], d["fit_time_sec"],
-            marker=marker_map[model], lw=2.0, ms=7,
-            color=color_map[model], ls=ls_map[model], label=model,
+            marker=_MARKER_MAP[model], lw=2.0, ms=7,
+            color=_COLOR_MAP[model], ls=_LS_MAP[model], label=model,
         )
+    ax.axhline(3600, color="black", ls=":", lw=1.0, alpha=0.5, label="1-hour wall time")
+    if n_train > 0:
+        ax.axvline(int(np.sqrt(n_train)), color="#E53935", ls=(0, (3, 5, 1, 5)),
+                   lw=1.2, alpha=0.6)
     ax.set_xscale("log")
     ax.set_yscale("log")
     ax.set_xlabel("Number of UPCs ($K$)")
     ax.set_ylabel("Fit time (seconds)")
     ax.set_title("Fit Time vs $K$ (log–log)")
     ax.grid(alpha=0.3, which="both")
-    ax.legend(loc="upper left", fontsize=9)
+    ax.legend(loc="upper left", fontsize=8)
 
     # Right: test RMSE
     ax = axes[1]
@@ -582,14 +734,17 @@ def _plot_scaling(df: pd.DataFrame, fig_dir: str) -> None:
             continue
         ax.plot(
             d["n_goods"], d["rmse_test"],
-            marker=marker_map[model], lw=2.0, ms=7,
-            color=color_map[model], ls=ls_map[model], label=model,
+            marker=_MARKER_MAP[model], lw=2.0, ms=7,
+            color=_COLOR_MAP[model], ls=_LS_MAP[model], label=model,
         )
+    if n_train > 0:
+        ax.axvline(int(np.sqrt(n_train)), color="#E53935", ls=(0, (3, 5, 1, 5)),
+                   lw=1.2, alpha=0.6)
     ax.set_xlabel("Number of UPCs ($K$)")
     ax.set_ylabel("Test RMSE (conditional share)")
     ax.set_title("Test RMSE vs $K$")
     ax.grid(alpha=0.3)
-    ax.legend(loc="upper right", fontsize=9)
+    ax.legend(loc="upper right", fontsize=8)
 
     fig.tight_layout()
     for ext in ("png", "pdf"):
@@ -597,6 +752,11 @@ def _plot_scaling(df: pd.DataFrame, fig_dir: str) -> None:
             os.path.join(fig_dir, f"fig12_scaling.{ext}"), dpi=150, bbox_inches="tight"
         )
     plt.close(fig)
+    print(f"  Saved: {fig_dir}/fig12_scaling")
+
+    # Produce separate single-metric figures as well
+    _plot_time_vs_goods(df, fig_dir, n_train=n_train)
+    _plot_rmse_vs_goods(df, fig_dir, n_train=n_train)
 
 
 def run(args):
@@ -662,6 +822,9 @@ def run(args):
                 "rmse_test": float(vals["rmse"]),
                 "n_train": int(len(arr["tr_idx"])),
                 "n_test": int(len(arr["te_idx"])),
+                "spend_scale_from_footfall": float(arr["spend_scale"]),
+                "blp_fs_rsq_mean": float(vals["fs_rsq_mean"]) if "fs_rsq_mean" in vals else float("nan"),
+                "blp_fs_rsq_min": float(vals["fs_rsq_min"]) if "fs_rsq_min" in vals else float("nan"),
             }
             scaling_rows.append(row)
 
@@ -686,7 +849,9 @@ def run(args):
     benchmark_csv = os.path.join(ecfg.out_dir, "table12_full_benchmark_at_max_goods.csv")
     scaling_df.to_csv(scaling_csv, index=False)
     bench_df.to_csv(benchmark_csv, index=False)
-    _plot_scaling(scaling_df, ecfg.fig_dir)
+    # Pass n_train from the largest K run so breakpoint lines are data-driven.
+    _n_train_max = int(scaling_df["n_train"].max()) if not scaling_df.empty else 0
+    _plot_scaling(scaling_df, ecfg.fig_dir, n_train=_n_train_max)
 
     meta = pd.DataFrame(
         [
@@ -698,7 +863,7 @@ def run(args):
                 "test_cutoff": int(ecfg.test_cutoff),
                 "min_store_weeks": int(ecfg.min_store_weeks),
                 "seed": int(ecfg.seed),
-                "market_size_note": "outside option = total category revenue minus selected-K UPC revenue",
+                "market_size_note": "M_it = FOOTFALL_it * spend_scale(train p98 of category spend per visit)",
             }
         ]
     )
@@ -733,8 +898,12 @@ def _parse_args():
     p.add_argument(
         "--goods-grid",
         type=str,
-        default="8,12,16,24,32",
-        help="Comma-separated UPC counts for scaling curves",
+        default="5,10,20,40,80,160,320",
+        help=(
+            "Comma-separated UPC counts for the scaling sweep. "
+            "The full-goods count is always appended automatically. "
+            "Default gives a log-spaced grid from 5 to 320 plus all-goods."
+        ),
     )
     p.add_argument(
         "--n-upc-cap",

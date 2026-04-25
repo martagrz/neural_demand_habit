@@ -92,6 +92,12 @@ def _parse_args():
                    help="Experiments to run: 01 02 03 04 (default: all)")
     p.add_argument("--epochs", type=int, default=None,
                    help="Override training epochs (default: 10000)")
+    p.add_argument("--dgp", type=str, default=None,
+                   help=(
+                       "Run exp 01 on a single DGP only. "
+                       "Aliases: ces, ql, leontief, sg, habit, e-ces. "
+                       "Full names also accepted (e.g. 'Endogenous CES')."
+                   ))
     return p.parse_args()
 
 
@@ -829,6 +835,24 @@ def main():
     if args.epochs is not None:
         cfg["EPOCHS"] = args.epochs
         print(f"[epochs override] Using EPOCHS={args.epochs}")
+
+    _DGP_ALIASES = {
+        "ces":          "CES",
+        "ql":           "Quasilinear",
+        "quasilinear":  "Quasilinear",
+        "leontief":     "Leontief",
+        "sg":           "Stone–Geary",
+        "stone-geary":  "Stone–Geary",
+        "habit":        "Habit",
+        "e-ces":        "Endogenous CES",
+        "endogenous-ces": "Endogenous CES",
+        "endogenous ces": "Endogenous CES",
+    }
+    if args.dgp is not None:
+        dgp_key = args.dgp.strip().lower()
+        dgp_name = _DGP_ALIASES.get(dgp_key, args.dgp)  # fall back to raw value
+        cfg["dgp_filter"] = dgp_name
+        print(f"[dgp filter] Exp 01 will run DGP: '{dgp_name}' only")
 
     os.makedirs(cfg["out_dir"], exist_ok=True)
     os.makedirs(cfg["fig_dir"], exist_ok=True)

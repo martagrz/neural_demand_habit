@@ -137,11 +137,20 @@ def _parse_args():
     p.add_argument("--fast",   action="store_true",
                    help="Use reduced settings for quick testing")
     p.add_argument("--load",   action="store_true",
-                   help="Load pre-trained models from cache (default: train from scratch)")
+                   help="Load neural (and other cached) checkpoints from model_cache_dir "
+                        "when a matching .pt exists, instead of retraining. "
+                        "T2 (HH income) retraining in Exp 07 uses a subfolder: "
+                        ".../models/{full,fast}/T2_income/.")
     p.add_argument("--verbose", action="store_true",
                    help="Verbose training logs (default: quiet; prints only KL_min summaries)")
     p.add_argument("--exp", nargs="+", type=str, default=None,
                    help="Experiments to run: 01 02 03 04 05 06 07 08 09 12 (default: all)")
+    # Exp-12-specific pass-through arguments
+    p.add_argument("--goods-grid", type=str, default="5,10,20,40,80,160,320",
+                   help="(Exp 12) Comma-separated UPC counts for the scaling sweep. "
+                        "The full-goods count is always appended automatically.")
+    p.add_argument("--full-only", action="store_true",
+                   help="(Exp 12) Skip the goods-grid sweep and run only the full-UPC benchmark.")
     return p.parse_args()
 
 
@@ -232,7 +241,43 @@ def _run_exp07(splits, cfg):
 
     agg = _aggregate(all_results)
     _make_figures(agg, splits, cfg)
-    _make_tables(agg, splits, cfg)
+
+    # ── T2: retrain every model with store-level HH income as budget proxy ──
+    # build_t2_splits swaps y_tr/y_te for census-matched median HH income
+    # (scaled to y_mn), then we run the identical training loop so all models
+    # learn demand as a function of exogenous household income.
+    from experiments.dominicks.data import build_t2_splits as _build_t2_splits
+    splits_t2 = _build_t2_splits(splits)
+    agg_t2 = None
+    if splits_t2 is not None:
+        print("\n" + "=" * 68)
+        print("  Exp 07 — T2 (HH income) retraining for welfare robustness check")
+        print("=" * 68)
+        # Separate cache dir from T1 so --load does not re-use the wrong
+        # checkpoints (same model tags, different income in data).
+        _base_cache = os.path.join(
+            cfg.get("model_cache_dir", "results/neural_demand/dominicks/models/full"),
+            "T2_income")
+        os.makedirs(_base_cache, exist_ok=True)
+        _cfg_t2 = dict(cfg)
+        _cfg_t2["model_cache_dir"] = _base_cache
+        all_results_t2 = []
+        for ri in range(N_RUNS):
+            seed = 42 + ri * 15
+            t0   = _time.time()
+            print(f"  T2 Run {ri+1}/{N_RUNS}  seed={seed}")
+            r_t2 = _run_once(seed, splits_t2, _cfg_t2)
+            all_results_t2.append(r_t2)
+            r_n = r_t2["perf"].get("Neural Demand (static)", {}).get("RMSE", float("nan"))
+            r_m = r_t2["perf"].get("Neural Demand (habit)",  {}).get("RMSE", float("nan"))
+            print(f"    Done in {_time.time()-t0:.0f}s  "
+                  f"ND_static_RMSE={r_n:.5f}  ND_habit_RMSE={r_m:.5f}")
+        agg_t2 = _aggregate(all_results_t2)
+        print("  T2 retraining complete.")
+    else:
+        print("  [T2] Skipping T2 retraining — HH income data not available.")
+
+    _make_tables(agg, splits, cfg, agg_t2=agg_t2)
     return all_results, agg
 
 
@@ -261,9 +306,9 @@ def _run_exp12(splits, cfg):
         test_cutoff=int(cfg.get("test_cutoff", 351)),
         min_store_weeks=int(cfg.get("min_store_wks", 20)),
         seed=42,
-        goods_grid="8,12,16,24,32", #641 in total 
+        goods_grid=cfg.get("exp12_goods_grid", "5,10,20,40,80,160,320"),
         n_upc_cap=0,
-        full_only=True,
+        full_only=bool(cfg.get("exp12_full_only", False)),
     )
     return run(args)
 
@@ -306,6 +351,10 @@ def main():
         cfg["weekly_path"] = args.weekly
     if args.upc:
         cfg["upc_path"] = args.upc
+
+    # Exp-12 pass-through
+    cfg["exp12_goods_grid"] = args.goods_grid
+    cfg["exp12_full_only"]  = args.full_only
 
     # Check data paths
     for key in ("weekly_path", "upc_path"):

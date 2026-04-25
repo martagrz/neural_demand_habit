@@ -1,2 +1,2 @@
 n_total_ranked_upcs,goods_grid,max_goods_for_full_benchmark,full_only,test_cutoff,min_store_weeks,seed,market_size_note
-620,620,620,True,351,20,42,M_it = FOOTFALL_it * spend_scale(train p98 of category spend per visit)
+620,"5,10,20,40,80,160,320,620",620,False,351,20,42,M_it = FOOTFALL_it * spend_scale(train p98 of category spend per visit)

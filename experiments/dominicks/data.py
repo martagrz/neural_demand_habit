@@ -9,6 +9,7 @@ All functions are pure (no global side effects) and accept a config dict.
 
 from __future__ import annotations
 
+import os
 import re
 import numpy as np
 import pandas as pd
@@ -77,6 +78,30 @@ _ASP_KEYS = [
 
 GOODS = ['Aspirin', 'Acetaminophen', 'Ibuprofen']
 G = 3
+
+
+def _load_store_median_hh_income(cfg: dict) -> dict[int, float] | None:
+    """Load store → median household income from demo.csv (census-matched demographics).
+
+    Returns None if the file is missing or lacks required columns.
+    """
+    p = cfg.get("demo_path")
+    if p is None:
+        wp = cfg.get("weekly_path", "data/wana.csv")
+        p = os.path.join(os.path.dirname(os.path.abspath(wp)), "demo.csv")
+    if not os.path.isfile(p):
+        return None
+    demo = pd.read_csv(p, low_memory=False)
+    demo.columns = [c.lower() for c in demo.columns]
+    if "store" not in demo.columns or "income" not in demo.columns:
+        return None
+    sub = demo[["store", "income"]].drop_duplicates(subset=["store"])
+    sub["income"] = pd.to_numeric(sub["income"], errors="coerce")
+    out = {}
+    for _, r in sub.iterrows():
+        if np.isfinite(r["income"]) and float(r["income"]) > 0:
+            out[int(r["store"])] = float(r["income"])
+    return out if out else None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -292,10 +317,20 @@ def build_arrays(panel: pd.DataFrame, cfg: dict) -> dict:
         prev_q    = log_w[i]
         prev      = delta * prev + (1.0 - delta) * log_w[i]
 
+    _hh_map = _load_store_median_hh_income(cfg)
+    if _hh_map is None:
+        hh_median = np.full(len(income), np.nan, dtype=float)
+        print('  [demo] demo.csv not found or missing store/income — T2 uses within-category y only')
+    else:
+        hh_median = np.array([_hh_map.get(int(s), np.nan) for s in stv], dtype=float)
+        _n = int(np.isfinite(hh_median).sum())
+        print(f'  [demo] census-matched median household income: {_n:,} / {len(hh_median):,} rows')
+
     return dict(prices=prices, shares=shares, mkt_shares=mkt_shares,
                 income=income, xbar=xb, q_prev=q_prev,
                 log_shares=log_w,
-                week=panel['WEEK'].values, store=stv)
+                week=panel['WEEK'].values, store=stv,
+                hh_median=hh_median)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -319,6 +354,9 @@ def prepare_splits(data: dict, cfg: dict) -> dict:
     log_shares = data['log_shares']
     weeks      = data['week']
     stores     = data['store']
+    hh_median  = data.get('hh_median')
+    if hh_median is None:
+        hh_median = np.full(len(income), np.nan, dtype=float)
 
     print('\n[2/7] Descriptive statistics:')
     desc = pd.DataFrame({
@@ -350,6 +388,7 @@ def prepare_splits(data: dict, cfg: dict) -> dict:
     ls_tr, ls_te   = log_shares[tr],  log_shares[te]
     s_tr, s_te     = stores[tr],      stores[te]
     wk_tr, wk_te   = weeks[tr],       weeks[te]
+    hh_tr, hh_te   = hh_median[tr],   hh_median[te]
     print(f'  Train: {len(tr):,}  |  Test: {len(te):,}')
 
     # Store-index encoding
@@ -402,6 +441,33 @@ def prepare_splits(data: dict, cfg: dict) -> dict:
     p1w   = p_mn.copy()
     p1w[sg] *= 1 + ss
 
+    # T2 income proxy: store-level median HH income scaled so its test-sample mean
+    # matches the within-category revenue mean y_mn.  Both train and test arrays are
+    # produced so that build_t2_splits() can construct a fully self-consistent set of
+    # splits for retraining models from scratch with the alternative proxy.
+    _vhh = np.isfinite(hh_te) & (hh_te > 0)
+    if _vhh.sum() > 0:
+        _I_bar = float(np.mean(hh_te[_vhh]))
+    else:
+        _I_bar = float("nan")
+
+    def _scale_hh(hh_arr, y_fallback):
+        out = np.empty(len(hh_arr), dtype=float)
+        if np.isfinite(_I_bar) and _I_bar > 0:
+            for i in range(len(hh_arr)):
+                hi = hh_arr[i]
+                out[i] = (y_mn * float(hi) / _I_bar
+                          if (np.isfinite(hi) and hi > 0)
+                          else float(y_fallback[i]))
+        else:
+            out[:] = y_fallback
+        return out
+
+    y_hh_te = _scale_hh(hh_te, y_te)
+    y_hh_tr = _scale_hh(hh_tr, y_tr)
+    if not (np.isfinite(_I_bar) and _I_bar > 0):
+        print('  [warn] No valid census HH income — y_hh_te/y_hh_tr fall back to within-category y')
+
     return dict(
         # indices
         tr=tr, te=te,
@@ -431,10 +497,61 @@ def prepare_splits(data: dict, cfg: dict) -> dict:
         p_mn=p_mn, y_mn=y_mn,
         xb_mn=xb_mn, qp_mn=qp_mn,
         p0w=p0w, p1w=p1w,
+        # T2 income arrays (store-level scaled HH income, both splits)
+        y_hh_tr=y_hh_tr, y_hh_te=y_hh_te,
+        hh_median_te=hh_te, hh_income_test_mean=_I_bar,
         # raw
         shares=shares, stores=stores, weeks=weeks,
         log_shares=log_shares,
     )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  T2 SPLITS  (store-level HH income as budget proxy)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def build_t2_splits(splits: dict) -> dict | None:
+    """Return a copy of *splits* with income swapped for store-level HH income.
+
+    Models trained on the returned splits will learn demand as a function of
+    census-matched median household income rather than within-category revenue.
+    The welfare exercise can then be re-run under this exogenous income proxy.
+
+    The scaling preserves units: mean(y_hh_tr/te) ≈ y_mn so model inputs stay
+    in the same range as the original training.
+
+    Returns None if HH income data was not available (y_hh_te all-NaN or absent).
+    """
+    y_hh_tr = splits.get("y_hh_tr")
+    y_hh_te = splits.get("y_hh_te")
+    if y_hh_tr is None or y_hh_te is None:
+        print("  [T2] y_hh_tr/y_hh_te not found in splits — skipping T2 runs")
+        return None
+    if not np.isfinite(y_hh_te).any():
+        print("  [T2] y_hh_te is all-NaN — skipping T2 runs")
+        return None
+
+    y_hh_mn = float(np.nanmean(y_hh_te))
+
+    t2 = dict(splits)           # shallow copy — only income arrays are replaced
+    t2["y_tr"]  = y_hh_tr
+    t2["y_te"]  = y_hh_te
+    t2["y_mn"]  = y_hh_mn
+    t2["fy"]    = np.full(len(splits["fy"]), y_hh_mn)
+    # Remove T2 keys so run_once store-CV fallback uses y_te (= y_hh_te) directly
+    t2.pop("y_hh_tr",  None)
+    t2.pop("y_hh_te",  None)
+    t2.pop("hh_median_te",      None)
+    t2.pop("hh_income_test_mean", None)
+    # Update welfare shock prices so p1w uses the new p_mn-compatible grid
+    p_mn = splits["p_mn"]
+    sg   = int(np.argmax(splits["p1w"] != splits["p0w"]))
+    ss   = float(splits["p1w"][sg] / splits["p0w"][sg]) - 1.0
+    p1w_t2 = p_mn.copy()
+    p1w_t2[sg] *= 1 + ss
+    t2["p0w"] = p_mn.copy()
+    t2["p1w"] = p1w_t2
+    return t2
 
 
 # ─────────────────────────────────────────────────────────────────────────────

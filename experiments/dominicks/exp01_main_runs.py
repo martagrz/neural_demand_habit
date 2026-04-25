@@ -452,6 +452,84 @@ def run_once(seed: int, splits: dict, cfg: dict) -> dict:
 
     welf = welf_all[sg] # Default for backward compatibility
 
+    # ── Per-store CVs (cluster-robust SE in aggregation) ─────────────────
+    # Uses whatever income is in splits["y_te"]:
+    #   • T1 splits  → within-category revenue per store
+    #   • T2 splits  → store-level HH income per store (after build_t2_splits)
+    # This allows the same run_once to serve both training regimes.
+    _store_uniq_te = np.unique(s_te)
+    _p_mn_by_store = {int(s): p_te[s_te == s].mean(0)        for s in _store_uniq_te}
+    _y_mn_by_store = {int(s): float(y_te[s_te == s].mean())  for s in _store_uniq_te}
+    _xb_mn_by_store = {int(s): xb_mdp_te[s_te == s].mean(0)    for s in _store_uniq_te}
+    _xb_fe_by_store = {int(s): xb_mdp_fe_te[s_te == s].mean(0) for s in _store_uniq_te}
+    _xb_cf_by_store = {int(s): xb_mdp_cf_te[s_te == s].mean(0) for s in _store_uniq_te}
+    _xb_fecf_by_store = {int(s): xb_mdp_fe_cf_te[s_te == s].mean(0) for s in _store_uniq_te}
+    _qp_by_store    = {int(s): qp_te[s_te == s].mean(0)      for s in _store_uniq_te}
+
+    welf_all_store_cv = {}  # {g_idx: {nm: {store_id: cv_value}}}
+    for g_idx in range(G):
+        welf_all_store_cv[g_idx] = {}
+
+        def _run_w_store(nm, sp, kw_args, s_id, y_by_store):
+            p0_s = _p_mn_by_store[s_id]
+            p1_s = p0_s.copy()
+            p1_s[g_idx] *= 1 + ss
+            y_s = y_by_store[s_id]
+            try:
+                return comp_var(sp, p0_s, p1_s, y_s, cfg, **kw_args)
+            except Exception:
+                return np.nan
+
+        for nm, sp, ek, xbt in SPECS:
+            store_cvs = {}
+            for s in _store_uniq_te:
+                s_int = int(s)
+                mdp_kw = ({'xb_prev0': _xb_mn_by_store[s_int],
+                           'q_prev0':  _qp_by_store[s_int]}
+                          if xbt is not None else {})
+                store_cvs[s_int] = _run_w_store(
+                    nm, sp, {**mdp_kw, **KW, **ek}, s_int, _y_mn_by_store)
+            welf_all_store_cv[g_idx][nm] = store_cvs
+
+        for _fe_nm, _fe_sp, _xb_fe_map in [
+            ('Neural Demand (FE)',        'nirl-fe',
+             {}),
+            ('Neural Demand (habit, FE)', 'mdp-fe',
+             None),
+        ]:
+            store_cvs = {}
+            for s in _store_uniq_te:
+                s_int   = int(s)
+                s_idx   = np.array([splits['_store_map'][s_int]])
+                fe_kw   = {'store_idx': s_idx, 's_te_mode_idx': s_te_mode_idx}
+                if 'habit' in _fe_nm:
+                    fe_kw['xb_prev0'] = _xb_fe_by_store[s_int]
+                    fe_kw['q_prev0']  = _qp_by_store[s_int]
+                store_cvs[s_int] = _run_w_store(
+                    _fe_nm, _fe_sp, {**KW, **fe_kw}, s_int, _y_mn_by_store)
+            welf_all_store_cv[g_idx][_fe_nm] = store_cvs
+
+        for _cf_nm, _cf_sp, _xb_cf_map_flag in [
+            ('Neural Demand (CF)',            'nirl-cf',    'none'),
+            ('Neural Demand (habit, CF)',     'mdp-cf',     'cf'),
+            ('Neural Demand (habit, FE, CF)', 'mdp-fe-cf',  'fecf'),
+        ]:
+            store_cvs = {}
+            for s in _store_uniq_te:
+                s_int  = int(s)
+                cf_kw  = {}
+                if _xb_cf_map_flag == 'cf':
+                    cf_kw['xb_prev0'] = _xb_cf_by_store[s_int]
+                    cf_kw['q_prev0']  = _qp_by_store[s_int]
+                elif _xb_cf_map_flag == 'fecf':
+                    cf_kw['xb_prev0'] = _xb_fecf_by_store[s_int]
+                    cf_kw['q_prev0']  = _qp_by_store[s_int]
+                    cf_kw['store_idx'] = np.array([splits['_store_map'][s_int]])
+                    cf_kw['s_te_mode_idx'] = s_te_mode_idx
+                store_cvs[s_int] = _run_w_store(
+                    _cf_nm, _cf_sp, {**KW, **cf_kw}, s_int, _y_mn_by_store)
+            welf_all_store_cv[g_idx][_cf_nm] = store_cvs
+
     # ── Welfare across xbar percentiles ───────────────────────────────────
     _D_PCTS  = [10, 25, 50, 75, 90]
     _xb_pcts = np.percentile(xb_tr, _D_PCTS, axis=0)
@@ -474,6 +552,68 @@ def run_once(seed: int, splits: dict, cfg: dict) -> dict:
                     _cf_sp, p0w, p1w, y_mn, cfg, **{**KW, **_cf_xkw})
             except Exception:
                 welf_by_pct[_pct][_cf_nm] = np.nan
+
+    def _lag_xb_e2e(xb_raw: np.ndarray) -> np.ndarray:
+        out = np.empty_like(xb_raw)
+        out[0] = xb_raw[0]
+        for i in range(1, len(xb_raw)):
+            out[i] = xb_raw[i] if s_te[i] != s_te[i - 1] else xb_raw[i - 1]
+        return out
+
+    def _xb0_for_delta(d_val: float) -> np.ndarray:
+        d_t = torch.tensor(float(d_val), dtype=torch.float32, device=dev)
+        with torch.no_grad():
+            xb_raw = compute_xbar_e2e(
+                d_t, ls_te_t, store_ids=s_te).cpu().numpy()
+        return _lag_xb_e2e(xb_raw).mean(0)
+
+    def _id_delta_cvs(
+        sp, mkey, sw_out, p0a, p1a,
+    ) -> list[float]:
+        cvs = []
+        am = sw_out.get("all_models", {}) or {}
+        idd = sw_out.get("id_deltas", None)
+        if idd is None or len(idd) == 0:
+            _dh = sw_out.get("delta_hat", float("nan"))
+            idd = [float(_dh)] if np.isfinite(_dh) else []
+        for d0 in np.atleast_1d(idd).astype(float):
+            if (not np.isfinite(d0)) or (not am):
+                cvs.append(float("nan"))
+                continue
+            try:
+                fk = min(am.keys(), key=lambda k: abs(float(k) - float(d0)))
+            except (ValueError, TypeError):
+                cvs.append(float("nan"))
+                continue
+            mdl = am[fk]
+            x0 = _xb0_for_delta(float(fk))
+            kww = {k: v for k, v in KW.items() if k != mkey}
+            kww[mkey] = mdl
+            if sp in ("mdp-fe", "mdp-fe-cf"):
+                kww["s_te_mode_idx"] = s_te_mode_idx
+            try:
+                cvs.append(
+                    comp_var(sp, p0a, p1a, y_mn, cfg, xb_prev0=x0, q_prev0=qp_mn, **kww))
+            except Exception:
+                cvs.append(float("nan"))
+        return cvs
+
+    welf_id_delta_range = {g: {} for g in range(G)}
+    for _g_idx in range(G):
+        p1b = p_mn.copy()
+        p1b[_g_idx] *= 1 + ss
+        hspecs = [
+            ('Neural Demand (habit)',         'mdp',     'mdp',   sw_m),
+            ('Neural Demand (habit, FE)',     'mdp-fe',  'mdp_fe', sw_mf),
+            ('Neural Demand (habit, CF)',     'mdp-cf',  'mdp_cf', sw_mcf),
+            ('Neural Demand (habit, FE, CF)', 'mdp-fe-cf', 'mdp_fe_cf', sw_mfcf),
+        ]
+        for hnm, hsp, mk, sdo in hspecs:
+            arr = _id_delta_cvs(hsp, mk, sdo, p0w, p1b)
+            welf_id_delta_range[_g_idx][hnm] = (
+                float(np.nanmin(arr)) if len(arr) else float("nan"),
+                float(np.nanmax(arr)) if len(arr) else float("nan"),
+            )
 
     # ── Table 4: MDP advantage ────────────────────────────────────────────
     r_a    = perf['LA-AIDS']['RMSE']
@@ -622,9 +762,11 @@ def run_once(seed: int, splits: dict, cfg: dict) -> dict:
 
     return dict(
         perf=perf, elast=elast, welf=welf, welf_all=welf_all,
+        welf_all_store_cv=welf_all_store_cv,
         cross_elast=cross_elast,
         mdp_structural=_mdp_structural,
         welf_by_pct=welf_by_pct,
+        welf_id_delta_range=welf_id_delta_range,
         r_a=r_a, r_blp=r_blp, r_q=r_q, r_s=r_s, r_wirl=r_wirl,
         r_n=r_n, r_m=r_m,
         r_ncf=r_ncf, r_mcf=r_mcf,
@@ -697,6 +839,48 @@ def aggregate(all_runs: list) -> dict:
                 stds[g][nm]  = np.nanstd(vals, ddof=ddof)
         return means, stds
 
+    def _agg_welf_store():
+        """Pool per-store CVs across all seeds, compute cluster-robust SE by store."""
+        import statsmodels.api as sm
+        if 'welf_all_store_cv' not in all_runs[0]:
+            return {}, {}
+        G_loc = len(all_runs[0]['welf_all_store_cv'])
+        means = {}
+        ses   = {}
+        for g in range(G_loc):
+            means[g] = {}
+            ses[g]   = {}
+            for nm in MODEL_NAMES:
+                store_vals = []  # (cv_value, store_id) from all seeds
+                store_ids  = []
+                for r in all_runs:
+                    d = r['welf_all_store_cv'].get(g, {}).get(nm, {})
+                    for sid, cv_val in d.items():
+                        store_vals.append(float(cv_val) if not np.isnan(float(cv_val)) else np.nan)
+                        store_ids.append(int(sid))
+                arr  = np.array(store_vals, dtype=float)
+                grps = np.array(store_ids,  dtype=int)
+                if len(arr) == 0:
+                    means[g][nm] = float('nan')
+                    ses[g][nm]   = float('nan')
+                    continue
+                valid = np.isfinite(arr)
+                if valid.sum() < 2:
+                    means[g][nm] = float(np.nanmean(arr))
+                    ses[g][nm]   = np.nan
+                    continue
+                try:
+                    fit = sm.OLS(arr[valid], np.ones((valid.sum(), 1))).fit(
+                        cov_type='cluster',
+                        cov_kwds={'groups': grps[valid]})
+                    means[g][nm] = float(fit.params[0])
+                    ses[g][nm]   = float(fit.bse[0])
+                except Exception:
+                    means[g][nm] = float(np.nanmean(arr))
+                    ses[g][nm]   = float(np.nanstd(arr[valid]) /
+                                         np.sqrt(len(np.unique(grps[valid]))))
+        return means, ses
+
     def _agg_elast():
         raw = {nm: [r['elast'][nm] for r in all_runs] for nm in MODEL_NAMES}
         return (
@@ -732,6 +916,7 @@ def aggregate(all_runs: list) -> dict:
     elast_mean, elast_std = _agg_elast()
     welf_mean, welf_std   = _agg_welf()
     welf_all_mean, welf_all_std = _agg_welf_all()
+    welf_store_mean, welf_store_se = _agg_welf_store()
     curve_mean, curve_std = _agg_curves()
     cbs_mean,   cbs_std   = _agg_curves_by_shock()
 
@@ -747,6 +932,20 @@ def aggregate(all_runs: list) -> dict:
             vals = [r['welf_by_pct'][_pct][_nm] for r in all_runs]
             welf_pct_mean[_pct][_nm] = np.nanmean(vals)
             welf_pct_std[_pct][_nm]  = np.nanstd(vals, ddof=ddof)
+
+    # CV range over the KL-identified δ set (per-good min/max, averaged over seeds)
+    welf_id_delta_lo_mean, welf_id_delta_hi_mean = {}, {}
+    if 'welf_id_delta_range' in all_runs[0]:
+        _G_loc  = len(all_runs[0]['welf_id_delta_range'])
+        for _g in range(_G_loc):
+            welf_id_delta_lo_mean[_g] = {}
+            welf_id_delta_hi_mean[_g] = {}
+            _hn0 = all_runs[0]['welf_id_delta_range'][_g].keys()
+            for _hnm in _hn0:
+                lo = [r['welf_id_delta_range'][_g][_hnm][0] for r in all_runs]
+                hi = [r['welf_id_delta_range'][_g][_hnm][1] for r in all_runs]
+                welf_id_delta_lo_mean[_g][_hnm] = float(np.nanmean(lo))
+                welf_id_delta_hi_mean[_g][_hnm] = float(np.nanmean(hi))
 
     # CF R²
     cf_rsq_mean = np.stack([r['cf_rsq'] for r in all_runs], 0).mean(0)
@@ -777,6 +976,7 @@ def aggregate(all_runs: list) -> dict:
         elast_mean=elast_mean, elast_std=elast_std,
         welf_mean=welf_mean,  welf_std=welf_std,
         welf_all_mean=welf_all_mean, welf_all_std=welf_all_std,
+        welf_store_mean=welf_store_mean, welf_store_se=welf_store_se,
         curve_mean=curve_mean, curve_std=curve_std,
         cbs_mean=cbs_mean,    cbs_std=cbs_std,
         cross_elast_mean=cross_elast_mean,
@@ -788,6 +988,8 @@ def aggregate(all_runs: list) -> dict:
         dm_diff_mu=_arr('dm_diff').mean(), dm_diff_se=_arr('dm_diff').std(ddof=ddof),
         # ── welfare by pct ───────────────────────────────────────────────
         welf_pct_mean=welf_pct_mean,
+        welf_id_delta_lo_mean=welf_id_delta_lo_mean,
+        welf_id_delta_hi_mean=welf_id_delta_hi_mean,
         welf_pct_std=welf_pct_std,
         # ── CF R² ───────────────────────────────────────────────────────
         cf_rsq_mean=cf_rsq_mean,
@@ -1241,14 +1443,18 @@ def _make_figures(agg: dict, splits: dict, cfg: dict) -> None:
 #  TABLES  (Sections 13–14: CSV + LaTeX)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _make_tables(agg: dict, splits: dict, cfg: dict) -> None:
+def _make_tables(agg: dict, splits: dict, cfg: dict,
+                 agg_t2: dict | None = None) -> None:
     """Write CSV tables and a LaTeX file for all Dominick's results.
 
     Parameters
     ----------
-    agg    : dict returned by ``aggregate()``
+    agg    : dict returned by ``aggregate()`` on T1 (within-category revenue) runs.
     splits : dict returned by ``data.load()``
     cfg    : experiment config dict
+    agg_t2 : optional dict returned by ``aggregate()`` on T2 (HH income) runs.
+             When provided, the combined welfare table uses T2 retrained CVs;
+             otherwise it falls back to T1 per-store CVs (less correct).
     """
     import os
     import pandas as pd
@@ -1341,6 +1547,12 @@ def _make_tables(agg: dict, splits: dict, cfg: dict) -> None:
     t3.to_csv(f"{out_dir}/table3_welfare.csv", index=False)
     print(f"  Saved: {out_dir}/table3_welfare.csv")
 
+    # T2 welfare: prefer agg_t2 (models retrained on HH income), fall back to
+    # T1 per-store CVs if no T2 runs were done.
+    _t2_src = agg_t2 if agg_t2 is not None else agg
+    welf_store_mean = _t2_src.get("welf_store_mean", {})
+    welf_store_se   = _t2_src.get("welf_store_se",   {})
+
     for g_idx in welf_all_mean:
         t3g = pd.DataFrame({
             "Model":        MODEL_NAMES,
@@ -1351,6 +1563,49 @@ def _make_tables(agg: dict, splits: dict, cfg: dict) -> None:
         gn = GOODS[g_idx]
         t3g.to_csv(f"{out_dir}/table3_welfare_{gn}.csv", index=False)
         print(f"  Saved: {out_dir}/table3_welfare_{gn}.csv")
+
+    # ── Combined T1/T2 welfare tables (one per good) ─────────────────────────
+    _WELF_COMBINED_MODELS = [
+        'LA-AIDS', 'Logit-IV', 'QUAIDS', 'Series Est.',
+        'Neural Demand (window)',
+        'Neural Demand (static)', 'Neural Demand (habit)',
+        'Neural Demand (FE)', 'Neural Demand (habit, FE)',
+        'Neural Demand (CF)', 'Neural Demand (habit, CF)',
+        'Neural Demand (habit, FE, CF)', 'PlaceboND',
+    ]
+
+    for g_idx in range(G):
+        gn = GOODS[g_idx]
+        t1_mean = welf_all_mean.get(g_idx, {})
+        t1_std  = welf_all_std.get(g_idx, {})
+        t2_mean = welf_store_mean.get(g_idx, {})
+        t2_se   = welf_store_se.get(g_idx, {})
+
+        nw_t1 = t1_mean.get('Neural Demand (static)', float('nan')) * 100.0
+        nw_t2 = t2_mean.get('Neural Demand (static)', float('nan')) * 100.0
+
+        rows = []
+        for nm in _WELF_COMBINED_MODELS:
+            v1  = t1_mean.get(nm, float('nan')) * 100.0
+            s1  = t1_std.get(nm,  float('nan')) * 100.0
+            v2  = t2_mean.get(nm, float('nan')) * 100.0
+            s2  = t2_se.get(nm,   float('nan')) * 100.0
+            diff1 = (float('nan') if nm == 'Neural Demand (static)' or np.isnan(nw_t1)
+                     else 100.0 * (v1 - nw_t1) / abs(nw_t1))
+            diff2 = (float('nan') if nm == 'Neural Demand (static)' or np.isnan(nw_t2)
+                     else 100.0 * (v2 - nw_t2) / abs(nw_t2))
+            rows.append({
+                'Model': nm,
+                'T1_CV_mean': round(v1, 4),
+                'T1_CV_se':   round(s1, 4),
+                'T1_vs_static_pct': round(diff1, 2) if not np.isnan(diff1) else float('nan'),
+                'T2_CV_mean': round(v2, 4),
+                'T2_CV_se':   round(s2, 4),
+                'T2_vs_static_pct': round(diff2, 2) if not np.isnan(diff2) else float('nan'),
+            })
+        pd.DataFrame(rows).to_csv(
+            f"{out_dir}/table3_welfare_combined_{gn}.csv", index=False)
+        print(f"  Saved: {out_dir}/table3_welfare_combined_{gn}.csv")
 
     # ── Table 4: Neural Demand habit advantage ────────────────────────────────
     def _pct(base, v): return f"{100*(base-v)/base:.1f}%" if not np.isnan(v) else "n/a"
@@ -1559,6 +1814,138 @@ def _make_tables(agg: dict, splits: dict, cfg: dict) -> None:
                  r"    \end{tablenotes}",
                  r"  \end{threeparttable}",
                  r"\end{table}", "")
+
+    # Combined T1/T2 Welfare Tables (one per good)  — LaTeX
+    _WELF_SECTION_MAP = {
+        'LA-AIDS': 'traditional', 'Logit-IV': 'traditional',
+        'QUAIDS': 'traditional', 'Series Est.': 'semipar',
+        'Neural Demand (window)': 'neural',
+        'Neural Demand (static)': 'neural', 'Neural Demand (habit)': 'neural',
+        'Neural Demand (FE)': 'neural', 'Neural Demand (habit, FE)': 'neural',
+        'Neural Demand (CF)': 'neural', 'Neural Demand (habit, CF)': 'neural',
+        'Neural Demand (habit, FE, CF)': 'neural', 'PlaceboND': 'neural',
+    }
+    _WELF_DISPLAY_MAP = {
+        'LA-AIDS': 'LA-AIDS', 'Logit-IV': 'BLP (IV)',
+        'QUAIDS': 'QUAIDS', 'Series Est.': 'Series Est.',
+        'Neural Demand (window)': 'Window',
+        'Neural Demand (static)': 'Static', 'Neural Demand (habit)': 'Habit',
+        'Neural Demand (FE)': 'FE', 'Neural Demand (habit, FE)': 'Habit, FE',
+        'Neural Demand (CF)': 'CF', 'Neural Demand (habit, CF)': 'Habit, CF',
+        'Neural Demand (habit, FE, CF)': r'Habit, FE, CF', 'PlaceboND': 'Placebo',
+    }
+
+    def _fmt_cv(v, se):
+        if np.isnan(float(v)):
+            return r'{---}'
+        return f'${float(v):+.4f}$'
+
+    def _fmt_se(se):
+        if np.isnan(float(se)):
+            return r'$(---)$'
+        return f'$({float(se):.4f})$'
+
+    def _fmt_pct(diff):
+        if np.isnan(float(diff)):
+            return '---'
+        return f'${float(diff):+.1f}\\%$'
+
+    # CV min/max over the KL-identified habit-decay set {δ} (per proxy / seed-avg)
+    _wd_lo_t1 = agg.get('welf_id_delta_lo_mean', {})
+    _wd_hi_t1 = agg.get('welf_id_delta_hi_mean', {})
+    _a2d = agg_t2 or {}
+    _wd_lo_t2 = _a2d.get('welf_id_delta_lo_mean', {})
+    _wd_hi_t2 = _a2d.get('welf_id_delta_hi_mean', {})
+    _HABIT_DELTA_RANGE_NMS = {
+        'Neural Demand (habit)', 'Neural Demand (habit, FE)',
+        'Neural Demand (habit, CF)', 'Neural Demand (habit, FE, CF)',
+    }
+
+    def _fmt_delta_range(lo, hi):
+        if np.isnan(float(lo)) or np.isnan(float(hi)):
+            return ''
+        return rf'\small{{[${float(lo):+.2f}$, ${float(hi):+.2f}$]}}'
+
+    for g_idx in range(G):
+        gn     = GOODS[g_idx]
+        t1_m   = welf_all_mean.get(g_idx, {})
+        t1_s   = welf_all_std.get(g_idx, {})
+        t2_m   = welf_store_mean.get(g_idx, {})
+        t2_s   = welf_store_se.get(g_idx, {})
+        nw_t1  = t1_m.get('Neural Demand (static)', float('nan')) * 100.0
+        nw_t2  = t2_m.get('Neural Demand (static)', float('nan')) * 100.0
+        prev_sec = None
+        tex += [
+            r'\begin{table}[htbp]',
+            r'  \centering',
+            rf'  \caption{{Compensating Variation Comparison: {int(ss*100)}\% {gn} Price Increase}}',
+            rf'  \label{{tab:combined_welfare_{gn.lower()}}}',
+            r'  \begin{threeparttable}',
+            r'  \begin{tabular}{lccccc}',
+            r'    \toprule',
+            r'    & \multicolumn{2}{c}{\textbf{Within-Category Revenue (T1)}} & & \multicolumn{2}{c}{\textbf{Median HH Income (T2)}} \\',
+            r'    \cmidrule(lr){2-3} \cmidrule(lr){5-6}',
+            r'    \textbf{Model} & \textbf{CV (\$)} & \textbf{vs. Stat (\%)} & & \textbf{CV (\$)} & \textbf{vs. Stat (\%)} \\',
+            r'    \midrule',
+        ]
+        for nm in _WELF_COMBINED_MODELS:
+            sec  = _WELF_SECTION_MAP.get(nm, '')
+            disp = _WELF_DISPLAY_MAP.get(nm, nm)
+            v1   = t1_m.get(nm, float('nan')) * 100.0
+            s1   = t1_s.get(nm, float('nan')) * 100.0
+            v2   = t2_m.get(nm, float('nan')) * 100.0
+            s2   = t2_s.get(nm, float('nan')) * 100.0
+            d1   = (float('nan') if nm == 'Neural Demand (static)' or np.isnan(nw_t1)
+                    else 100.0 * (v1 - nw_t1) / abs(nw_t1))
+            d2   = (float('nan') if nm == 'Neural Demand (static)' or np.isnan(nw_t2)
+                    else 100.0 * (v2 - nw_t2) / abs(nw_t2))
+            # section header
+            if sec != prev_sec:
+                sec_label = (r'\textit{Traditional Models}' if sec == 'traditional'
+                             else r'\textit{Semi/Non-parametric}' if sec == 'semipar'
+                             else r'\textit{Neural Demand}')
+                tex.append(rf'    \multicolumn{{2}}{{l}}{{{sec_label}}} & & & & \\')
+                prev_sec = sec
+            tex.append(
+                f'    {disp} & {_fmt_cv(v1, s1)} & {_fmt_pct(d1)} & & {_fmt_cv(v2, s2)} & {_fmt_pct(d2)} \\\\')
+            tex.append(
+                f'             & {_fmt_se(s1)} & & & {_fmt_se(s2)} & \\\\')
+            # CV range over the identified δ set (min / max over KL-identified grid)
+            if nm in _HABIT_DELTA_RANGE_NMS:
+                _lo1 = _wd_lo_t1.get(g_idx, {}).get(nm, float('nan')) * 100.0
+                _hi1 = _wd_hi_t1.get(g_idx, {}).get(nm, float('nan')) * 100.0
+                _lo2 = _wd_lo_t2.get(g_idx, {}).get(nm, float('nan')) * 100.0
+                _hi2 = _wd_hi_t2.get(g_idx, {}).get(nm, float('nan')) * 100.0
+                r1 = _fmt_delta_range(_lo1, _hi1)
+                r2 = _fmt_delta_range(_lo2, _hi2) if agg_t2 is not None else ''
+                if r1 or r2:
+                    tex.append(
+                        f'             & {r1} & & & {r2} & \\\\')
+            tex.append(r'    \addlinespace')
+        _p_abb = {'Aspirin': 'ASP', 'Acetaminophen': 'ACET', 'Ibuprofen': 'IBU'}.get(gn, gn[:3])
+        tex += [
+            r'    \bottomrule',
+            r'    \addlinespace',
+            r'  \end{tabular}',
+            r'  \begin{tablenotes}\small',
+            (r'    \item Mean CV with standard errors in parentheses.'
+             r' T1 uses total within-category analgesic revenue (hundreds of dollars) at mean test prices;'
+             r' this proxy is endogenous to the price shock.'
+             r' T2 retrains all models using store-level median household income'
+             r' from census-matched demographics as the budget variable'
+             r' (scaled to match within-category expenditure units);'
+             r' T2 standard errors are cluster-robust by store.'
+             rf' {cfg.get("cv_steps", 100)}-step Riemann sum,'
+             rf' $p_{{\mathrm{{{_p_abb}}}}}\to{1+ss:.2f}\,p_{{\mathrm{{{_p_abb}}}}}.$'
+             r' Bracketed rows for habit models show the range of CV losses'
+             r' as the habit-decay parameter $\delta$ varies over the KL-identified set'
+             r' (test-KL within $2\times$ the standard error of the minimum in the'
+             r' fixed-$\delta$ grid; see the $\delta$ identification table).'
+             r' ``vs.\ Stat'' is per column relative to Neural Demand (static).'),
+            r'  \end{tablenotes}',
+            r'  \end{threeparttable}',
+            r'\end{table}', '',
+        ]
 
     # Table D4: MDP advantage
     # Need to extract Placebo RMSE from perf dict

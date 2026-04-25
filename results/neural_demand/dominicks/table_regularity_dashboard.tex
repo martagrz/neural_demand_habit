@@ -2,17 +2,17 @@
 \centering
 \caption{Near-integrability diagnostics (``regularity dashboard'').}
 \label{tab:regularity_dashboard}
-\begin{tabular}{lcccccc}
+\begin{tabular}{lccccccc}
 \toprule
-Model & Test KL & $\mathbb E[D_{\mathrm{sym}}]$ & $\max D_{\mathrm{sym}}$ & $\Pr(\lambda_{\max}(\tilde S)>0)$ & $\mathbb E[D_{\mathrm{curv}}]$ & $\mathbb E[D_{\mathrm{hom}}]$ \\
+Model & Test KL & $\mathbb E[D_{\mathrm{sym}}]$ & $\max D_{\mathrm{sym}}$ & $\Pr(\lambda_{\max}(\tilde S)>0)$ & $\mathbb E[D_{\mathrm{curv}}]$ & $\mathbb E[D_{\mathrm{hom}}]$ & $\Pr(\text{non-mono})$ \\
 \midrule
-Static (no reg) & 0.0338 & 0.0087 & 0.0863 & 0.937 & 0.0002 & 0.0148 \\
-Static (reg) & 0.0315 & 0.0119 & 0.0897 & 0.937 & 0.0001 & 0.0105 \\
-Habit (no reg) & 0.0208 & 0.0051 & 0.0593 & 0.937 & 0.0001 & 0.0066 \\
-Habit (reg) & 0.0267 & 0.0081 & 0.0757 & 0.937 & 0.0002 & 0.0118 \\
+Static (no reg) & 0.0192 & 0.0499 & 0.5395 & 0.937 & 0.0027 & 0.0576 & 0.328 \\
+Static (reg) & 0.0204 & 0.0401 & 0.2217 & 0.937 & 0.0023 & 0.0558 & 0.042 \\
+Habit (no reg) & 0.0114 & 0.0145 & 0.2258 & 0.934 & 0.0003 & 0.0189 & 0.356 \\
+Habit (reg) & 0.0113 & 0.0076 & 0.1171 & 0.931 & 0.0001 & 0.0113 & 0.006 \\
 \addlinespace
-FE static (reg) & 0.0321 & 0.0096 & 0.0823 & 0.937 & 0.0002 & 0.0154 \\
-FE habit (reg) & 0.0254 & 0.0062 & 0.0671 & 0.937 & 0.0001 & 0.0103 \\
+FE static (reg) & 0.0164 & 0.0419 & 0.2255 & 0.937 & 0.0035 & 0.0680 & 0.011 \\
+FE habit (reg) & 0.0113 & 0.0157 & 0.1212 & 0.937 & 0.0006 & 0.0263 & 0.012 \\
 \bottomrule
 \end{tabular}
 \end{table}

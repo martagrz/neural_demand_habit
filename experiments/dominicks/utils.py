@@ -446,20 +446,23 @@ def fit_mdp_delta_grid_dom(
     threshold = kl_grid[best_k] + se_multiplier * se_grid[best_k]
     id_mask   = kl_grid <= threshold
     id_deltas = delta_grid[id_mask]
-    id_set    = ((float(id_deltas.min()), float(id_deltas.max()))
-                 if id_mask.any() else (delta_hat, delta_hat))
+    if not id_mask.any() or len(id_deltas) == 0:
+        id_deltas = np.array([float(delta_hat)], dtype=float)
+    id_set    = (float(id_deltas.min()), float(id_deltas.max()))
 
     print(f"  → {tag} δ̂={delta_hat:.2f}  IS=[{id_set[0]:.2f}, {id_set[1]:.2f}]  "
           f"(KL_min={kl_grid[best_k]:.6f})")
     return {
-        'best_model': best_model,
-        'best_hist':  best_hist,
-        'delta_hat':  delta_hat,
-        'kl_grid':    kl_grid,
-        'se_grid':    se_grid,
-        'id_set':     id_set,
-        'id_mask':    id_mask,
-        'all_models': all_models,
+        'best_model':  best_model,
+        'best_hist':   best_hist,
+        'delta_hat':   delta_hat,
+        'kl_grid':     kl_grid,
+        'se_grid':     se_grid,
+        'id_set':      id_set,
+        'id_mask':     id_mask,
+        'id_deltas':   id_deltas,
+        'delta_grid':  np.asarray(delta_grid, dtype=float),
+        'all_models':  all_models,
     }
 
 

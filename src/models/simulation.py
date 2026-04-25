@@ -1,6 +1,6 @@
 """Simulation model facade with per-object module exports."""
 
-from .hausman_iv import cf_first_stage
+from .hausman_iv import cf_first_stage, cf_first_stage_full
 from .la_aids import AIDSBench, QUAIDS, SeriesDemand
 from .blp_logit_iv import BLPBench
 from .ces_consumer import CESConsumer

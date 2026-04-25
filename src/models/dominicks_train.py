@@ -109,7 +109,9 @@ def train_dominicks(model, p_tr, y_tr, w_tr, pfx, cfg,
             wm = model(lp_d, ly_b, SI[idx], v_hat=vh_b)
         else:
             wm = model(lp_d, ly_b, v_hat=vh_b)
-        # Own-price monotonicity: penalize positive ∂w_g/∂log p_g for each good g.
+        # Own-price monotonicity: penalise max(0, ∂w_g/∂log(p_g) - w_g), matching
+        # train_neural_irl (simulation). Equivalent to ruling out upward-sloping
+        # *quantity* demand; consistent with Leontief / Stone–Geary.
         # For large K, randomly subsample goods each step to avoid K backward passes.
         lmono = torch.tensor(0.0, device=dev)
         _max_mono = int(cfg.get("max_mono_goods", model.n_goods))
@@ -122,7 +124,8 @@ def train_dominicks(model, p_tr, y_tr, w_tr, pfx, cfg,
             _own = torch.autograd.grad(
                 wm[:, _g].sum(), lp_d, create_graph=True, retain_graph=True
             )[0][:, _g]
-            lmono = lmono + torch.mean(torch.clamp(_own, min=0))
+            _threshold = wm[:, _g].detach()
+            lmono = lmono + torch.mean(torch.clamp(_own - _threshold, min=0))
         lmono = lmono / _n_check
 
         lslut = torch.tensor(0.0, device=dev)
