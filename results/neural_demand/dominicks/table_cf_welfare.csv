@@ -6,7 +6,7 @@ Series Est.,-0.2333,0.0
 Linear Demand (Shared),-0.282325,0.0
 Linear Demand (GoodSpec),-0.281783,0.0
 Linear Demand (Orth),-0.240706,0.0
-Neural Demand (static),-0.233977,0.000623
-Neural Demand (habit),-0.210331,0.000641
-Neural Demand (CF),-0.228029,0.000592
-"Neural Demand (habit, CF)",-0.214361,0.000551
+Neural Demand (static),-0.234574,0.000509
+Neural Demand (habit),-0.210731,0.00057
+Neural Demand (CF),-0.227354,0.000722
+"Neural Demand (habit, CF)",-0.214352,0.000396

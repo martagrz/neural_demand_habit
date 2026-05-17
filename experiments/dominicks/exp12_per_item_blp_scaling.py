@@ -722,7 +722,6 @@ def _plot_scaling(df: pd.DataFrame, fig_dir: str, n_train: int = 0) -> None:
     ax.set_yscale("log")
     ax.set_xlabel("Number of UPCs ($K$)")
     ax.set_ylabel("Fit time (seconds)")
-    ax.set_title("Fit Time vs $K$ (log–log)")
     ax.grid(alpha=0.3, which="both")
     ax.legend(loc="upper left", fontsize=8)
 
@@ -742,7 +741,6 @@ def _plot_scaling(df: pd.DataFrame, fig_dir: str, n_train: int = 0) -> None:
                    lw=1.2, alpha=0.6)
     ax.set_xlabel("Number of UPCs ($K$)")
     ax.set_ylabel("Test RMSE (conditional share)")
-    ax.set_title("Test RMSE vs $K$")
     ax.grid(alpha=0.3)
     ax.legend(loc="upper right", fontsize=8)
 

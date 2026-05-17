@@ -553,7 +553,6 @@ def run(args):
     ax.set_xticks(x)
     ax.set_xticklabels(fa["Model"], rotation=20, ha="right")
     ax.set_ylabel("CV loss per implied analgesics buyer ($)")
-    ax.set_title("Figure A: Per-buyer welfare gap")
     if {"Neural Demand (static)", "Neural Demand (habit)"} <= set(fa["Model"]):
         s = fa.loc[fa["Model"] == "Neural Demand (static)", "CV_per_buyer"].iloc[0]
         h = fa.loc[fa["Model"] == "Neural Demand (habit)", "CV_per_buyer"].iloc[0]
@@ -585,7 +584,6 @@ def run(args):
         ax.plot(lw[:, 0], lw[:, 1], color="black", lw=2, label="LOWESS")
         ax.set_xlabel("Store median income")
         ax.set_ylabel("Welfare gap per buyer (habit-static)")
-        ax.set_title("Figure B: Welfare gap vs income")
         ax.legend(fontsize=8)
         fig.tight_layout()
         fig.savefig(os.path.join(pcfg.fig_dir, "figure_B_welfare_gap_vs_income.png"), dpi=160)
@@ -613,9 +611,8 @@ def run(args):
                 ax.bar(xx, agg["mean"], yerr=agg["se"], capsize=4, color="#72B7B2")
                 ax.set_xticks(xx)
                 ax.set_xticklabels(agg["tercile"])
-            ax.set_title(f"{dim} terciles")
             ax.set_ylabel("RMSE reduction (static - habit)")
-        fig.suptitle("Figure C: Habit intensity by demographic tercile")
+
         fig.tight_layout()
         fig.savefig(os.path.join(pcfg.fig_dir, "figure_C_habit_intensity_terciles.png"), dpi=160)
         plt.close(fig)
@@ -630,7 +627,6 @@ def run(args):
                 ax.axvspan(d["id_set_l"], d["id_set_u"], color=col, alpha=0.12)
         ax.set_xlabel("delta grid")
         ax.set_ylabel("validation KL")
-        ax.set_title("Figure D: Profile delta curves by income group")
         ax.legend()
         fig.tight_layout()
         fig.savefig(os.path.join(pcfg.fig_dir, "figure_D_profile_delta_income_groups.png"), dpi=160)
@@ -650,7 +646,6 @@ def run(args):
         plt.colorbar(sc, ax=ax, label="Welfare gap per buyer")
         ax.set_xlabel("Longitude")
         ax.set_ylabel("Latitude")
-        ax.set_title("Figure E: Distributional welfare map")
         fig.tight_layout()
         fig.savefig(os.path.join(pcfg.fig_dir, "figure_E_distributional_welfare_map.png"), dpi=160)
         plt.close(fig)

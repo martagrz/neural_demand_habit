@@ -7,11 +7,11 @@ Neural Demand (window),-23.788062,0.062387,5
 Linear Demand (Shared),-28.232518,0.0,5
 Linear Demand (GoodSpec),-28.178325,0.0,5
 Linear Demand (Orth),-24.070642,0.0,5
-Neural Demand (static),-23.397698,0.139308,5
-Neural Demand (habit),-21.156441,0.142745,5
-Neural Demand (FE),-24.278587,0.159101,5
-"Neural Demand (habit, FE)",-21.436852,0.102848,5
-Neural Demand (CF),-22.746044,0.081592,5
-"Neural Demand (habit, CF)",-20.942024,0.049774,5
-"Neural Demand (habit, FE, CF)",-21.650621,0.08448,5
-PlaceboND,-23.422434,0.209527,5
+Neural Demand (static),-23.457354,0.113738,5
+Neural Demand (habit),-21.194667,0.124108,5
+Neural Demand (FE),-24.196445,0.180697,5
+"Neural Demand (habit, FE)",-21.655531,0.080206,5
+Neural Demand (CF),-22.735414,0.161469,5
+"Neural Demand (habit, CF)",-20.96091,0.065275,5
+"Neural Demand (habit, FE, CF)",-21.688165,0.155543,5
+PlaceboND,-23.321465,0.093191,5

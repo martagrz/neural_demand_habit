@@ -223,7 +223,8 @@ def run_once(seed: int, splits: dict, cfg: dict) -> dict:
 
     # ── Cross-price elasticity matrices ───────────────────────────────────────
     cross_eps = {}
-    for nm in ["Logit-IV", "LA-AIDS",
+    for nm in ["Logit-IV", "LA-AIDS", "QUAIDS",
+               "Series Est.", "Neural Demand (window)",
                "Neural Demand (static)", "Neural Demand (habit)",
                "Neural Demand (CF)", "Neural Demand (habit, CF)"]:
         try:
@@ -305,22 +306,34 @@ def make_figures(agg: dict, cfg: dict) -> None:
     print(f"  Saved: {fig_dir}/fig_dom_elasticities.pdf/png")
 
     # Cross-elasticity heatmaps
+    import matplotlib.colors as mcolors
     for nm, d in agg["cross_agg"].items():
-        figH, axH = plt.subplots(figsize=(6, 5))
         mat = d["mean"]
-        im  = axH.imshow(mat, cmap="RdBu_r", vmin=-2, vmax=2)
-        plt.colorbar(im, ax=axH, label="Elasticity")
+        vabs = max(float(np.nanmax(np.abs(mat))), 0.1)
+        norm = mcolors.TwoSlopeNorm(vmin=-vabs, vcenter=0.0, vmax=vabs)
+        figH, axH = plt.subplots(figsize=(4.5, 4.5))
+        im  = axH.imshow(mat, cmap="RdBu_r", norm=norm, aspect="equal")
         axH.set_xticks(range(G)); axH.set_yticks(range(G))
-        axH.set_xticklabels(GOODS); axH.set_yticklabels(GOODS)
+        axH.set_xticklabels([f"{GOODS[g]}\n($w_{{{g}}}$)" for g in range(G)], fontsize=9)
+        axH.set_yticklabels([f"{GOODS[g]}\n($p_{{{g}}}$)" for g in range(G)], fontsize=9)
         for i in range(G):
             for j in range(G):
-                axH.text(j, i, f"{mat[i,j]:.2f}", ha="center", va="center", fontsize=10)
+                v = mat[i, j]
+                sign = "+" if v >= 0 else ""
+                axH.text(j, i, f"{sign}{v:.2f}", ha="center", va="center",
+                         fontsize=9, fontweight="bold", color="white")
         safe_nm = nm.replace(" ", "_").replace("(", "").replace(")", "").replace("+", "plus")
-        axH.set_title(f"Cross-Price Elasticities — {nm}", fontsize=11, fontweight="bold")
+        cbarH = figH.colorbar(im, ax=axH, fraction=0.046, pad=0.04)
+        cbarH.set_label(r"$\varepsilon_{ij} = \partial\log w_j/\partial\log p_i$", fontsize=8)
         figH.tight_layout()
+        _FILENAME_ALIASES = {"Logit-IV": "BLP_IV"}
         for ext in ("pdf", "png"):
             figH.savefig(f"{fig_dir}/fig_dom_cross_elast_{safe_nm}.{ext}",
                          dpi=150, bbox_inches="tight")
+            alias = _FILENAME_ALIASES.get(nm)
+            if alias:
+                figH.savefig(f"{fig_dir}/fig_dom_cross_elast_{alias}.{ext}",
+                             dpi=150, bbox_inches="tight")
         plt.close(figH)
         print(f"  Saved: {fig_dir}/fig_dom_cross_elast_{safe_nm}.pdf/png")
 

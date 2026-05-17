@@ -187,7 +187,7 @@ def predict_shares(spec, p, y, *,
             return nds_cf(lp, ly, v_hat=vh).cpu().numpy()
     if spec == "nd-habit-cf":
         # HabitND(n_cf=G): takes (lp, ly, log_xb_prev, log_q_prev, v_hat)
-        # xbar_hab should already be in log-space (log-share EWMA)
+        # xbar_hab should be in log-quantity space (EWMA of log-quantities)
         with torch.no_grad():
             lp = torch.log(torch.tensor(np.maximum(p, 1e-8),
                                         dtype=torch.float32, device=device))
@@ -268,15 +268,26 @@ def compute_cross_elasticity_matrix(spec, p_pt, y_pt, h=1e-4, xbar_pt=None, **kw
     return eps
 
 
-def compute_compensating_variation(spec, p0, p1, y, steps=100, xbar_pt=None, **kw):
-    """CV via Riemann integral of Hicksian demand along price path p0→p1."""
+def compute_compensating_variation(spec, p0, p1, y, steps=100,
+                                   xbar_pt=None, q_prev_pt=None, **kw):
+    """CV via Riemann integral of Hicksian demand along price path p0→p1.
+
+    Parameters
+    ----------
+    xbar_pt   : (G,) array — initial habit stock passed as ``xbar_hab`` to
+                predict_shares.  Both Habit and Habit+CF use log-quantities.
+    q_prev_pt : (G,) array — initial previous-quantity state passed as
+                ``q_prev_hab`` to predict_shares (Habit+CF model only).
+                When None, predict_shares falls back to ``xb.clone()``.
+    """
     xb_1d = xbar_pt.reshape(1, -1) if xbar_pt is not None else None
+    qp_1d = q_prev_pt.reshape(1, -1) if q_prev_pt is not None else None
     path  = np.linspace(p0, p1, steps)
     dp    = (p1 - p0) / steps
     loss  = 0.0
     for t in range(steps):
         w = predict_shares(spec, path[t:t+1], np.array([y]),
-                           xbar_hab=xb_1d, **kw)[0]
+                           xbar_hab=xb_1d, q_prev_hab=qp_1d, **kw)[0]
         loss -= (w * y / path[t]) @ dp
     return loss
 

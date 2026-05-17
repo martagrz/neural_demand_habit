@@ -304,13 +304,20 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
             xb_tr_mean = np.zeros(curr_w_train.shape[1])
 
         # ── Neural Demand (habit, CF) ─────────────────────────────────────────
-        # Use fixed delta (midpoint of grid) for the CF habit model
+        # Use fixed delta (midpoint of grid) for the CF habit model.
+        # xb_ewma uses log-shares (not log-quantities) for exp01.  In exp01 the
+        # DGPs are non-habit (CES, E-CES, Leontief …) so the xbar is irrelevant
+        # noise regardless.  Log-shares are bounded (≈ −2 to 0) and — unlike
+        # log-quantities — don't amplify the E-CES price endogeneity by sigma≈3.
+        # Using log-quantities blows up E-CES training.  Exp02 (Habit DGP) uses
+        # log-quantities throughout since habit is real there.
         DELTA_HAB = cfg.get("DELTA_HAB", float(DELTA_GRID[len(DELTA_GRID)//2]))
-        xb_ewma = np.zeros_like(curr_w_train)
-        xb_ewma[0] = np.log(np.maximum(curr_w_train[0], 1e-8))
+        log_w_tr = np.log(np.maximum(curr_w_train, 1e-8))
+        xb_ewma = np.empty_like(log_w_tr)
+        xb_ewma[0] = log_w_tr[0]
         for t in range(1, N):
             xb_ewma[t] = (DELTA_HAB * xb_ewma[t-1]
-                          + (1.0 - DELTA_HAB) * np.log(np.maximum(curr_w_train[t-1], 1e-8)))
+                          + (1.0 - DELTA_HAB) * log_w_tr[t-1])
         q_prev_tr = np.roll(lq_tr, 1, axis=0); q_prev_tr[0] = lq_tr[0]
 
         nds_hab_cf_m = HabitND(n_goods=3, hidden_dim=HIDDEN,
@@ -332,13 +339,13 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
             if verbose: print(f"    [ND+Habit-CF fit failed: {exc}]")
             nds_hab_cf_m = None
 
-        # Post-shock EWMA for habit-CF evaluation (v_hat=0 → structural)
-        xb_post_ewma = np.zeros_like(curr_w_post)
-        xb_post_ewma[0] = np.log(np.maximum(curr_w_post[0], 1e-8))
-        for t in range(1, len(curr_w_post)):
+        # Post-shock EWMA for habit-CF evaluation: log-shares, consistent with training.
+        log_w_post = np.log(np.maximum(curr_w_post, 1e-8))
+        xb_post_ewma = np.empty_like(log_w_post)
+        xb_post_ewma[0] = log_w_post[0]
+        for t in range(1, len(log_w_post)):
             xb_post_ewma[t] = (DELTA_HAB * xb_post_ewma[t-1]
-                               + (1.0 - DELTA_HAB)
-                               * np.log(np.maximum(curr_w_post[t-1], 1e-8)))
+                               + (1.0 - DELTA_HAB) * log_w_post[t-1])
         q_prev_post = np.roll(lq_post, 1, axis=0); q_prev_post[0] = lq_post[0]
 
         # ── Shared KW bundle ─────────────────────────────────────────────────
@@ -377,6 +384,8 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
             xb_kw = {}
             if sp == "neural-demand-habit":
                 xb_kw = dict(xbar_pt=xb_post.mean(0))
+            elif sp == "neural-demand-habit-cf":
+                xb_kw = dict(xbar_pt=xb_post_ewma.mean(0))
             try:
                 eps = compute_own_elasticities(sp, p_eval, AVG_Y, **xb_kw, **KW)
                 elast_rows.append({"DGP": dgp_name, "Model": nm,
@@ -403,6 +412,8 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
             xb_kw = {}
             if sp == "neural-demand-habit":
                 xb_kw = dict(xbar_pt=xb_post.mean(0))
+            elif sp == "neural-demand-habit-cf":
+                xb_kw = dict(xbar_pt=xb_post_ewma.mean(0))
             try:
                 cv = compute_compensating_variation(sp, p0_welf, p1_welf, AVG_Y,
                                                     **xb_kw, **KW)
@@ -434,6 +445,8 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
                 _xb_kw = {}
                 if sp == "neural-demand-habit":
                     _xb_kw = dict(xbar_pt=xb_post.mean(0))
+                elif sp == "neural-demand-habit-cf":
+                    _xb_kw = dict(xbar_pt=xb_post_ewma.mean(0))
                 _row = {"DGP": dgp_name, "Model": nm}
                 for _g in range(3):
                     _sf = np.ones(3); _sf[_g] = 1.0 + _SHOCK_PCT

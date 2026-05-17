@@ -203,7 +203,8 @@ def _run_exp07(splits, cfg):
     * fig_cross_elast_heatmap.{pdf,png} — Cross-price elasticity heatmaps
     * fig_segmentation_sorting.{pdf,png}— Market segmentation diagnostics
     * fig_mdp_decomposition.{pdf,png}   — MDP structural decomposition
-    * fig_rmse_bars.{pdf,png}           — RMSE bar chart (N_RUNS > 1)
+    * fig_rmse_bars.{pdf,png}           — RMSE horizontal forest plot (N_RUNS > 1)
+    * fig_rmse_scatter.{pdf,png}        — RMSE vertical scatter with SE bars (N_RUNS > 1)
     * dominicks_latex.tex + table*.csv  — LaTeX tables and CSVs
     """
     import time as _time

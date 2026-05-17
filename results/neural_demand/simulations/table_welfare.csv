@@ -9,7 +9,7 @@ CES,Linear Demand (Orth),-121.33414,1.053056,0.432609,0.154639
 CES,Neural Demand (static),-122.602353,0.024603,0.296156,0.008464
 CES,Neural Demand (habit),-122.573508,0.062661,0.283869,0.030326
 CES,Neural Demand (CF),-122.586007,0.051535,0.316503,0.016859
-CES,"Neural Demand (habit, CF)",-122.89408,0.536957,0.278772,0.104916
+CES,"Neural Demand (habit, CF)",-123.776745,1.702315,1.033431,0.350443
 CES,Ground Truth,-122.624323,0.0,0.291611,0.0
 Quasilinear,LA-AIDS,-0.001631,458.911601,6.3e-05,21.521103
 Quasilinear,Logit-IV,-0.00043,47.341461,7e-06,2.278188
@@ -21,7 +21,7 @@ Quasilinear,Linear Demand (Orth),-1.481666,507788.069581,0.003896,1335.56983
 Quasilinear,Neural Demand (static),-0.000816,179.720408,8e-05,27.480853
 Quasilinear,Neural Demand (habit),-0.000609,108.782311,3.3e-05,11.421804
 Quasilinear,Neural Demand (CF),-0.001105,278.718065,8.3e-05,28.360464
-Quasilinear,"Neural Demand (habit, CF)",-16.377045,5613651.509376,11.335159,3885485.196794
+Quasilinear,"Neural Demand (habit, CF)",-0.000858,206.216874,0.000198,58.141489
 Quasilinear,Ground Truth,-0.000292,0.0,0.0,0.0
 Leontief,LA-AIDS,-76.296112,0.776926,0.236488,0.122899
 Leontief,Logit-IV,-75.830823,0.343445,0.473447,0.134049
@@ -33,7 +33,7 @@ Leontief,Linear Demand (Orth),-76.73435,1.34977,0.508074,0.246859
 Leontief,Neural Demand (static),-75.736498,0.077778,0.343727,0.017681
 Leontief,Neural Demand (habit),-75.79137,0.10848,0.311875,0.020912
 Leontief,Neural Demand (CF),-75.700165,0.079589,0.3501,0.011228
-Leontief,"Neural Demand (habit, CF)",-75.905632,0.428046,0.340774,0.141507
+Leontief,"Neural Demand (habit, CF)",-72.382386,5.520163,1.408554,0.687138
 Leontief,Ground Truth,-75.709449,0.0,0.323675,0.0
 Stone–Geary,LA-AIDS,-88.398199,0.227773,0.0547,0.031149
 Stone–Geary,Logit-IV,-87.682133,1.03603,0.067201,0.012489
@@ -45,7 +45,7 @@ Stone–Geary,Linear Demand (Orth),-88.62147,0.027307,0.073077,0.015775
 Stone–Geary,Neural Demand (static),-88.610489,0.047437,0.086014,0.021773
 Stone–Geary,Neural Demand (habit),-88.612417,0.037289,0.048431,0.013967
 Stone–Geary,Neural Demand (CF),-88.615607,0.084224,0.054475,0.035469
-Stone–Geary,"Neural Demand (habit, CF)",-88.511778,0.104601,0.089785,0.03189
+Stone–Geary,"Neural Demand (habit, CF)",-88.429846,0.300724,0.13268,0.085673
 Stone–Geary,Ground Truth,-88.600038,0.0,0.060427,0.0
 Habit,LA-AIDS,-126.19704,8.056845,0.742842,0.593835
 Habit,Logit-IV,-125.090991,7.109831,0.750095,0.603333
@@ -57,7 +57,7 @@ Habit,Linear Demand (Orth),-126.216688,8.073709,0.720272,0.575117
 Habit,Neural Demand (static),-127.28201,8.986429,0.438587,0.346062
 Habit,Neural Demand (habit),-117.955597,1.08876,0.532965,0.355324
 Habit,Neural Demand (CF),-127.268433,8.974839,0.559262,0.458176
-Habit,"Neural Demand (habit, CF)",-119.413714,10.215451,7.057228,3.459334
+Habit,"Neural Demand (habit, CF)",-96.008607,22.85375,12.208766,7.545429
 Habit,Ground Truth,-116.786902,0.0,0.13089,0.0
 Endogenous CES,LA-AIDS,-126.412367,3.094475,0.767384,0.780069
 Endogenous CES,Logit-IV,-123.601826,2.52248,1.639913,0.252026
@@ -69,5 +69,5 @@ Endogenous CES,Linear Demand (Orth),-123.657526,1.751965,1.123946,0.310836
 Endogenous CES,Neural Demand (static),-91.518461,25.40136,6.528211,5.20778
 Endogenous CES,Neural Demand (habit),-132.754864,29.310536,20.596642,9.219392
 Endogenous CES,Neural Demand (CF),-118.293268,7.374029,4.780772,1.899486
-Endogenous CES,"Neural Demand (habit, CF)",-123.659563,10.512049,6.909072,2.049506
+Endogenous CES,"Neural Demand (habit, CF)",-111.31581,9.218031,3.095761,2.546725
 Endogenous CES,Ground Truth,-122.624323,0.0,0.291611,0.0

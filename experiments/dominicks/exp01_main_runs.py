@@ -369,11 +369,13 @@ def run_once(seed: int, splits: dict, cfg: dict) -> dict:
 
     # ── Cross-price elasticity matrices ───────────────────────────────────
     _cp_specs = [
-        ('LA-AIDS',       'aids',   {},   None),
-        ('Logit-IV',      'blp',    {},   None),
-        ('QUAIDS',        'quaids', {},   None),
-        ('Neural Demand (static)', 'nirl',   {},   None),
-        ('Neural Demand (habit)',  'mdp',    {},   (xb_mn, qp_mn)),
+        ('LA-AIDS',                   'aids',       {},   None),
+        ('Logit-IV',                  'blp',        {},   None),
+        ('QUAIDS',                    'quaids',     {},   None),
+        ('Series Est.',               'series',     {},   None),
+        ('Neural Demand (window)',    'window-irl', {},   None),
+        ('Neural Demand (static)',    'nirl',       {},   None),
+        ('Neural Demand (habit)',     'mdp',        {},   (xb_mn, qp_mn)),
     ]
     cross_elast = {}
     for nm, sp, ek, xbt in _cp_specs:
@@ -952,6 +954,7 @@ def aggregate(all_runs: list) -> dict:
 
     # Cross-price elasticity
     _cp_names = ['LA-AIDS', 'Logit-IV', 'QUAIDS',
+                 'Series Est.', 'Neural Demand (window)',
                  'Neural Demand (static)', 'Neural Demand (habit)',
                  'Neural Demand (FE)', 'Neural Demand (habit, FE)',
                  'Neural Demand (CF)', 'Neural Demand (habit, CF)']
@@ -1153,13 +1156,7 @@ def _make_figures(agg: dict, splits: dict, cfg: dict) -> None:
                     xy=(0, 0.5), xycoords="axes fraction",
                     xytext=(-42, 0), textcoords="offset points",
                     ha="right", va="center", fontsize=8, rotation=90, color="#555")
-    for _g, ax in enumerate(axes2[0, :]):
-        ax.set_title(f"{GOODS[_g]} share  $w_{_g}$", fontsize=10, fontweight="bold")
     se_note2 = f"  (bands = ±1 SD, n={N_RUNS})" if N_RUNS > 1 else ""
-    fig2.suptitle(
-        f"Cross-Price Demand Matrix — Dominick's Analgesics{se_note2}\n"
-        "Row = price that varies  ·  Column = budget share response",
-        fontsize=12, fontweight="bold")
     fig2.tight_layout()
     for ext in ("pdf", "png"):
         fig2.savefig(f"{fig_dir}/fig_mdp_advantage.{ext}", dpi=150, bbox_inches="tight")
@@ -1199,20 +1196,14 @@ def _make_figures(agg: dict, splits: dict, cfg: dict) -> None:
             ax.legend(fontsize=8)
             ax.set_xlabel("Epoch", fontsize=10)
             ax.set_ylabel("KL Divergence", color=ck, fontsize=10)
-            ax.set_title(title, fontsize=11, fontweight="bold")
             ax.grid(True, alpha=0.3)
         else:
-            ax.set_title(f"{title}\n(no history available)", fontsize=11)
             ax.axis("off")
     # Turn off the unused last panel if present
     if len(_hist_keys) < len(axes3_flat):
         for _ax in axes3_flat[len(_hist_keys):]:
             _ax.axis("off")
     seed_last = 42 + (N_RUNS - 1) * 15
-    fig3.suptitle(
-        f"Training Convergence — Dominick's Analgesics  (last run, seed={seed_last})\n"
-        "KL divergence: raw (faint) and EMA-smoothed (bold)",
-        fontsize=11, fontweight="bold")
     fig3.tight_layout()
     for ext in ("pdf", "png"):
         fig3.savefig(f"{fig_dir}/fig_convergence.{ext}", dpi=150, bbox_inches="tight")
@@ -1267,8 +1258,7 @@ def _make_figures(agg: dict, splits: dict, cfg: dict) -> None:
                 ax.set_xlim(lo, hi); ax.set_ylim(lo, hi)
                 ri = (float(np.sqrt(_mse_fn(w_te[valid, gi], wp[valid, gi])))
                       if valid.any() else float("nan"))
-                ax.set_title(f"{gn}\nRMSE={ri:.4f}", fontsize=10, fontweight="bold")
-                ax.set_xlabel("Observed", fontsize=9)
+                ax.set_xlabel(f"Observed  ({gn},  RMSE={ri:.4f})", fontsize=9)
                 ax.set_ylabel("Predicted", fontsize=9)
                 ax.grid(True, alpha=0.3)
             
@@ -1276,7 +1266,6 @@ def _make_figures(agg: dict, splits: dict, cfg: dict) -> None:
             # Handle "N. Demand" -> "n_demand" or similar
             # "N. Demand\n(habit)" -> "n_demand_habit"
             
-            fig_m.suptitle(f"{mn.replace(chr(10), ' ')} — Observed vs Predicted", fontsize=12, fontweight="bold")
             fig_m.tight_layout()
             
             fname = f"fig_scatter_{clean_name}"
@@ -1288,67 +1277,102 @@ def _make_figures(agg: dict, splits: dict, cfg: dict) -> None:
     except Exception as _e4:
         print(f"  [fig_scatter split skipped: {_e4}]")
 
-    # ── Fig 6: RMSE bar chart with error bars ─────────────────────────────────
+    # ── Fig 6: RMSE horizontal forest plot with ±1 SD error bars ────────────
     if N_RUNS > 1:
-        fig6, ax6 = plt.subplots(figsize=(12, 5))
-        xp   = np.arange(len(MODEL_NAMES))
-        rmu  = np.array([rmse_mean.get(nm, float("nan")) for nm in MODEL_NAMES])
-        rse  = np.array([rmse_std.get(nm,  float("nan")) for nm in MODEL_NAMES])
-        clrs = plt.cm.tab10(np.linspace(0, 0.8, len(MODEL_NAMES)))
-        ax6.bar(xp, rmu, yerr=rse, capsize=5, color=clrs,
-                edgecolor="k", alpha=0.85, error_kw=dict(lw=1.5, ecolor="#333"))
-        ax6.set_xticks(xp)
-        ax6.set_xticklabels(MODEL_NAMES, rotation=25, ha="right", fontsize=9)
-        ax6.set_ylabel("Out-of-Sample RMSE", fontsize=11)
-        ax6.set_title(f"Out-of-Sample RMSE — Mean ± 1 SD  ({N_RUNS} runs)\n"
-                      "Dominick's Analgesics", fontsize=12, fontweight="bold")
-        ax6.grid(True, axis="y", alpha=0.35)
+        _rmse_names = [nm for nm in MODEL_NAMES if not nm.startswith("Linear Demand")]
+        n6   = len(_rmse_names)
+        # plot bottom-to-top so first model is at the top
+        yp   = np.arange(n6)[::-1]
+        rmu  = np.array([rmse_mean.get(nm, float("nan")) for nm in _rmse_names])
+        rse  = np.array([rmse_std.get(nm,  float("nan")) for nm in _rmse_names])
+        clrs = plt.cm.tab10(np.linspace(0, 0.8, n6))
+        fig6, ax6 = plt.subplots(figsize=(7, max(4, n6 * 0.42)))
+        for yi, mu, se, ci in zip(yp, rmu, rse, clrs):
+            ax6.plot([mu - se, mu + se], [yi, yi], color=ci, lw=1.8, solid_capstyle="butt")
+            ax6.plot([mu - se, mu - se], [yi - 0.18, yi + 0.18], color=ci, lw=1.8)
+            ax6.plot([mu + se, mu + se], [yi - 0.18, yi + 0.18], color=ci, lw=1.8)
+            ax6.scatter(mu, yi, color=ci, s=60, zorder=3, edgecolors="k", linewidths=0.5)
+        ax6.set_yticks(yp)
+        ax6.set_yticklabels(_rmse_names, fontsize=9)
+        ax6.set_xlabel("Out-of-Sample RMSE", fontsize=11)
+        ax6.grid(True, axis="x", alpha=0.35)
+        ax6.spines["top"].set_visible(False)
+        ax6.spines["right"].set_visible(False)
         fig6.tight_layout()
         for ext in ("pdf", "png"):
             fig6.savefig(f"{fig_dir}/fig_rmse_bars.{ext}", dpi=150, bbox_inches="tight")
         plt.close(fig6)
         print("  Saved: fig_rmse_bars")
 
+        # ── Fig 6b: RMSE vertical scatter with SE error bars ──────────────────
+        _nd_prefix = "Neural Demand"
+        _base_v = [nm for nm in MODEL_NAMES
+                   if not nm.startswith("Linear Demand") and not nm.startswith(_nd_prefix)]
+        _nd_v   = [nm for nm in MODEL_NAMES if nm.startswith(_nd_prefix)]
+        _rmse_names_v = _base_v + _nd_v   # baselines left, Neural Demand right
+        n6b  = len(_rmse_names_v)
+        xp6b = np.arange(n6b)
+        rmu6b = np.array([rmse_mean.get(nm, float("nan")) for nm in _rmse_names_v])
+        rse6b = np.array([rmse_std.get(nm,  float("nan")) for nm in _rmse_names_v]) / np.sqrt(N_RUNS)
+        clrs6b = plt.cm.tab10(np.linspace(0, 0.8, n6b))
+        fig6b, ax6b = plt.subplots(figsize=(max(8, n6b * 0.75), 5))
+        for xi, mu, se, ci in zip(xp6b, rmu6b, rse6b, clrs6b):
+            ax6b.plot([xi, xi], [mu - se, mu + se], color=ci, lw=1.8, solid_capstyle="butt")
+            ax6b.plot([xi - 0.12, xi + 0.12], [mu - se, mu - se], color=ci, lw=1.8)
+            ax6b.plot([xi - 0.12, xi + 0.12], [mu + se, mu + se], color=ci, lw=1.8)
+            ax6b.scatter(xi, mu, color=ci, s=60, zorder=3, edgecolors="k", linewidths=0.5)
+        ax6b.set_xticks(xp6b)
+        ax6b.set_xticklabels(_rmse_names_v, rotation=30, ha="right", fontsize=9)
+        ax6b.set_ylabel("Out-of-Sample RMSE", fontsize=11)
+        ax6b.grid(True, axis="y", alpha=0.35)
+        ax6b.spines["top"].set_visible(False)
+        ax6b.spines["right"].set_visible(False)
+        fig6b.tight_layout()
+        for ext in ("pdf", "png"):
+            fig6b.savefig(f"{fig_dir}/fig_rmse_scatter.{ext}", dpi=150, bbox_inches="tight")
+        plt.close(fig6b)
+        print("  Saved: fig_rmse_scatter")
+
     # ── Fig 7: Cross-price elasticity heatmaps ────────────────────────────────
-    _hm_models = ["LA-AIDS", "Logit-IV", "QUAIDS", "Neural Demand (static)", "Neural Demand (habit)",
+    _hm_models = ["LA-AIDS", "Logit-IV", "QUAIDS",
+                  "Series Est.", "Neural Demand (window)",
+                  "Neural Demand (static)", "Neural Demand (habit)",
                   "Neural Demand (FE)", "Neural Demand (habit, FE)",
                   "Neural Demand (CF)", "Neural Demand (habit, CF)"]
     _hm_avail  = [nm for nm in _hm_models if nm in cross_elast_mean]
     if _hm_avail:
+        import matplotlib.colors as mcolors
         n_cols = 3
         n_rows = (len(_hm_avail) + n_cols - 1) // n_cols
         fig7, axes7 = plt.subplots(n_rows, n_cols, figsize=(4.5 * n_cols, 4.5 * n_rows))
         axes7_flat = axes7.flatten()
-        
+
         _vabs = max(max(np.nanmax(np.abs(cross_elast_mean[nm])) for nm in _hm_avail), 0.1)
-        
+        _norm = mcolors.TwoSlopeNorm(vmin=-_vabs, vcenter=0.0, vmax=_vabs)
+
+        _last_im = None
         for idx, ax7 in enumerate(axes7_flat):
             if idx < len(_hm_avail):
                 nm = _hm_avail[idx]
                 mat = cross_elast_mean[nm]
-                im  = ax7.imshow(mat, cmap="RdBu_r", vmin=-_vabs, vmax=_vabs, aspect="auto")
+                im  = ax7.imshow(mat, cmap="RdBu_r", norm=_norm, aspect="equal")
+                _last_im = im
                 for i in range(G):
                     for j in range(G):
                         v = mat[i, j]
-                        ax7.text(j, i, f"{v:.2f}", ha="center", va="center", fontsize=11,
-                                 color="white" if abs(v) > 0.4 * _vabs else "black",
-                                 fontweight="bold")
+                        sign = "+" if v >= 0 else ""
+                        ax7.text(j, i, f"{sign}{v:.2f}", ha="center", va="center",
+                                 fontsize=9, fontweight="bold", color="white")
                 ax7.set_xticks(range(G)); ax7.set_yticks(range(G))
-                ax7.set_xticklabels([f"$w_{{{g}}}$\n({GOODS[g][:4]}.)" for g in range(G)], fontsize=9)
-                ax7.set_yticklabels([f"$p_{{{g}}}$\n({GOODS[g][:4]}.)" for g in range(G)], fontsize=9)
-                ax7.set_xlabel("Response share  $w_j$", fontsize=9)
-                ax7.set_ylabel("Shock price  $p_i$", fontsize=9)
-                ax7.set_title(nm, fontsize=11, fontweight="bold")
-                plt.colorbar(im, ax=ax7, fraction=0.046, pad=0.04,
-                             label=r"$\varepsilon_{ij}$ = $\partial\log w_j/\partial\log p_i$")
+                ax7.set_xticklabels([f"{GOODS[g]}\n($w_{{{g}}}$)" for g in range(G)], fontsize=9)
+                ax7.set_yticklabels([f"{GOODS[g]}\n($p_{{{g}}}$)" for g in range(G)], fontsize=9)
+                if nm == _hm_avail[-1] and _last_im is not None:
+                    cbar7 = fig7.colorbar(_last_im, ax=ax7, fraction=0.046, pad=0.04)
+                    cbar7.set_label(r"$\varepsilon_{ij} = \partial\log w_j/\partial\log p_i$",
+                                    fontsize=8)
             else:
                 ax7.axis('off')
-        
-        fig7.suptitle(
-            "Cross-Price Elasticity Heatmaps — Dominick's Analgesics\n"
-            r"Evaluated at mean test prices  ·  MDP: fixed mean $\bar{x}$ (sorting removed)"
-            "\nDiagonal = own-price  ·  Off-diagonal = cross-price",
-            fontsize=10, fontweight="bold")
+
         fig7.tight_layout()
         for ext in ("pdf", "png"):
             fig7.savefig(f"{fig_dir}/fig_cross_elast_heatmap.{ext}", dpi=150, bbox_inches="tight")
@@ -1363,9 +1387,6 @@ def _make_figures(agg: dict, splits: dict, cfg: dict) -> None:
         _rho8 = np.corrcoef(w_te[:, 2], w_te[:, 0])[0, 1]
         ax8a.set_xlabel(f"{GOODS[2]} budget share $w_2$", fontsize=11)
         ax8a.set_ylabel(f"{GOODS[0]} budget share $w_0$", fontsize=11)
-        ax8a.set_title(f"Market segmentation: {GOODS[0]} vs {GOODS[2]}\n"
-                       f"Test-set store×weeks  |  ρ = {_rho8:+.3f}",
-                       fontsize=11, fontweight="bold")
         ax8a.grid(True, alpha=0.3)
         _is_first_te = np.concatenate([[True], s_te[1:] != s_te[:-1]])
         _valid8 = ~_is_first_te
@@ -1388,13 +1409,7 @@ def _make_figures(agg: dict, splits: dict, cfg: dict) -> None:
         _rho_xb8 = np.corrcoef(_ibu_p, _asp_xb)[0, 1]
         ax8b.set_xlabel(f"{GOODS[2]} price $p_2$ ($/100 tab)", fontsize=11)
         ax8b.set_ylabel(r"Aspirin habit stock $\bar{x}_0$ (log-norm.)", fontsize=11)
-        ax8b.set_title(f"Habit sorting: high-{GOODS[2]}-price stores have lower aspirin habit\n"
-                       f"Test set (first-in-store obs. excluded)  |  ρ = {_rho_xb8:+.3f}",
-                       fontsize=11, fontweight="bold")
         ax8b.legend(fontsize=9); ax8b.grid(True, alpha=0.3)
-        fig8.suptitle("Why aspirin demand falls with ibuprofen price:\n"
-                      "market segmentation (A) and store-level habit sorting (B)",
-                      fontsize=12, fontweight="bold")
         fig8.tight_layout()
         for ext in ("pdf", "png"):
             fig8.savefig(f"{fig_dir}/fig_segmentation_sorting.{ext}", dpi=150, bbox_inches="tight")
@@ -1423,9 +1438,6 @@ def _make_figures(agg: dict, splits: dict, cfg: dict) -> None:
                                  alpha=0.22, color=TEAL, label="← Sorting contribution")
         ax9.set_xlabel(f"{GOODS[sg]} price ($/100 tab)", fontsize=12)
         ax9.set_ylabel(f"{GOODS[0]} budget share $w_{{asp}}$", fontsize=12)
-        ax9.set_title(
-            "Neural Demand decomposition: structural price effect vs. habit-stock sorting",
-            fontsize=10, fontweight="bold")
         ax9.legend(fontsize=9, loc="best", framealpha=0.92)
         ax9.grid(True, alpha=0.3)
         fig9.tight_layout()
@@ -2060,6 +2072,9 @@ def _make_tables(agg: dict, splits: dict, cfg: dict,
             ("fig_rmse_bars",
              f"Out-of-Sample RMSE across all models — mean $\\pm 1$ SD over {N_RUNS} runs.",
              "fig:dom_rmse_bars"),
+            ("fig_rmse_scatter",
+             f"Out-of-Sample RMSE across all models — mean $\\pm 1$ SE over {N_RUNS} runs.",
+             "fig:dom_rmse_scatter"),
         ]
     FDEFS += [
         ("fig_cross_elast_heatmap", "Cross-Price Elasticity Heatmaps.", "fig:dom_cross_elast"),

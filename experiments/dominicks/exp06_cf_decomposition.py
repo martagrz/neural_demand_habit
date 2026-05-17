@@ -452,47 +452,47 @@ def make_figures(agg: dict, cfg: dict) -> None:
     valid_els  = [row for row in elast_agg
                   if not np.all(np.isnan(row.get("mat_mean", np.full((G, G), np.nan))))]
     if valid_els:
+        import matplotlib.colors as mcolors
         n_models = len(valid_els)
         n_cols = min(4, n_models)
         n_rows = int(np.ceil(n_models / n_cols))
         fig3, axes3 = plt.subplots(n_rows, n_cols,
-                                   figsize=(4.5 * n_cols, 4 * n_rows),
+                                   figsize=(4.5 * n_cols, 4.5 * n_rows),
                                    squeeze=False)
         axes3_flat = axes3.flatten()
 
-        # shared colour scale: symmetric around 0, clipped to [-3, 1]
+        # shared colour scale: symmetric around 0, clipped to 95th percentile
         all_vals = np.concatenate([row["mat_mean"].flatten() for row in valid_els])
-        vmax = min(float(np.nanpercentile(np.abs(all_vals), 95)), 3.0)
-        vmin = -vmax
+        vabs = max(min(float(np.nanpercentile(np.abs(all_vals), 95)), 3.0), 0.1)
+        norm3 = mcolors.TwoSlopeNorm(vmin=-vabs, vcenter=0.0, vmax=vabs)
 
+        last_im3 = None
         for idx, row in enumerate(valid_els):
             ax  = axes3_flat[idx]
             mat = row["mat_mean"]   # (G, G)
-            im  = ax.imshow(mat, cmap="RdBu_r", vmin=vmin, vmax=vmax,
-                            aspect="auto", interpolation="nearest")
+            im  = ax.imshow(mat, cmap="RdBu_r", norm=norm3, aspect="equal")
+            last_im3 = im
             ax.set_xticks(range(G)); ax.set_yticks(range(G))
-            ax.set_xticklabels(GOODS, fontsize=8, rotation=30, ha="right")
-            ax.set_yticklabels(GOODS, fontsize=8)
-            # annotate every cell
+            ax.set_xticklabels([f"{GOODS[g]}\n($w_{{{g}}}$)" for g in range(G)], fontsize=9)
+            ax.set_yticklabels([f"{GOODS[g]}\n($p_{{{g}}}$)" for g in range(G)], fontsize=9)
             for i in range(G):
                 for j in range(G):
                     val = mat[i, j]
-                    txt = f"{val:.2f}" if not np.isnan(val) else "—"
-                    col = "white" if abs(val) > vmax * 0.6 else "black"
+                    if not np.isnan(val):
+                        sign = "+" if val >= 0 else ""
+                        txt = f"{sign}{val:.2f}"
+                    else:
+                        txt = "—"
                     ax.text(j, i, txt, ha="center", va="center",
-                            fontsize=8, color=col)
-            ax.set_title(row["Model"], fontsize=8, fontweight="bold", pad=4)
-            ax.set_xlabel("Price of →", fontsize=7)
-            ax.set_ylabel("Budget share of ↓", fontsize=7)
-            plt.colorbar(im, ax=ax, shrink=0.8, pad=0.02)
+                            fontsize=9, fontweight="bold", color="white")
+            if idx == n_models - 1 and last_im3 is not None:
+                cbar3 = fig3.colorbar(last_im3, ax=ax, fraction=0.046, pad=0.04)
+                cbar3.set_label(r"$\varepsilon_{ij} = \partial\log w_j/\partial\log p_i$",
+                                fontsize=8)
 
-        # hide spare panels
         for idx in range(n_models, len(axes3_flat)):
             axes3_flat[idx].set_visible(False)
 
-        # fig3.suptitle(
-        #     f"Price Elasticity Matrices — CF Decomposition{se_note}",
-        #     fontsize=12, fontweight="bold")
         fig3.tight_layout()
         for ext in ("pdf", "png"):
             fig3.savefig(f"{fig_dir}/fig_cf_elasticity_heatmap.{ext}",

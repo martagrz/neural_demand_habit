@@ -393,9 +393,6 @@ def _plot_elasticity_heatmaps(agg1: dict, fig_dir: str) -> None:
         ax.set_yticks(range(3))
         ax.set_yticklabels([f"{g}\n($p_{i}$)" for i, g in enumerate(good_labels)],
                            fontsize=9)
-        disp_title = _MODEL_DISPLAY.get(mn, mn)
-        ax.set_title(disp_title, fontsize=10, fontweight="bold")
-
         if mn == models_avail[-1]:
             cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
             cbar.set_label(r"$\varepsilon_{ij} = \partial\log x_j/\partial\log p_i$",
@@ -625,16 +622,11 @@ def _plot_convergence(agg1: dict | None, agg2: dict | None, fig_dir: str) -> Non
                 ax.scatter([eps[best_i]], [mu[best_i]],
                            color=sty["color"], s=50, zorder=5)
 
-                ax.set_title(_MODEL_DISPLAY.get(mn, mn), fontsize=10,
-                             fontweight="bold")
                 ax.set_xlabel("Epoch", fontsize=9)
                 ax.set_ylabel("Training KL divergence", fontsize=9)
                 ax.legend(fontsize=7.5, loc="upper right")
                 ax.grid(True, alpha=0.3)
 
-            se_note = f"  ({n_runs2} seeds, ±1 SE)" if n_runs2 > 1 else ""
-            fig.suptitle(f"Training Convergence — Habit DGP{se_note}",
-                         fontsize=12, fontweight="bold")
             fig.tight_layout()
             _save_fig(fig, fig_dir, "paper_convergence_habit_dgp")
         else:
@@ -695,14 +687,7 @@ def _plot_convergence(agg1: dict | None, agg2: dict | None, fig_dir: str) -> Non
                     if ci == 0:
                         ax.set_ylabel(f"{dgp}\nTraining KL", fontsize=9,
                                       fontweight="bold")
-                    # Column header on top row
-                    if ri == 0:
-                        ax.set_title(_MODEL_DISPLAY.get(mn, mn),
-                                     fontsize=9, fontweight="bold")
-
             se_note = f"  ({n_runs1} seeds, ±1 SE)" if n_runs1 > 1 else ""
-            fig.suptitle(f"Training Convergence by DGP{se_note}",
-                         fontsize=12, fontweight="bold")
             fig.tight_layout()
             _save_fig(fig, fig_dir, "paper_convergence_by_dgp")
         else:

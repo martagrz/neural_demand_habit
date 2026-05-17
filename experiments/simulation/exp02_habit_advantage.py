@@ -216,12 +216,16 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
         xbar_hat = compute_xbar_e2e(d_t, lq_sh_t, store_ids=None).cpu().numpy()
 
     # ── Neural Demand (habit, CF) — fixed DELTA_HAB ───────────────────────────
-    xb_ewma = np.zeros_like(w_hab)
-    xb_ewma[0] = np.log(np.maximum(w_hab[0], 1e-8))
+    # xb_ewma must be EWMA of log-quantities (same as the Habit model which uses
+    # compute_xbar_e2e on lq_tr).  The previous version used log(w_hab) —
+    # log-shares — which put xb in a completely different space (≈ −1 vs ≈ 5+),
+    # causing welfare evaluation to be inconsistent between the two models.
+    q_prev_tr = np.roll(lq_tr, 1, axis=0); q_prev_tr[0] = lq_tr[0]
+    xb_ewma = np.empty_like(lq_tr)
+    xb_ewma[0] = lq_tr[0]
     for t in range(1, N):
         xb_ewma[t] = (DELTA_HAB * xb_ewma[t - 1]
-                      + (1.0 - DELTA_HAB) * np.log(np.maximum(w_hab[t - 1], 1e-8)))
-    q_prev_tr = np.roll(lq_tr, 1, axis=0); q_prev_tr[0] = lq_tr[0]
+                      + (1.0 - DELTA_HAB) * lq_tr[t - 1])
 
     nds_hab_cf_m = HabitND(n_goods=3, hidden_dim=HIDDEN,
                                 delta_init=DELTA_HAB, n_cf=3)
@@ -244,13 +248,13 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
         nds_hab_cf_m = None
 
     # Post-shock EWMA for habit-CF evaluation (v_hat=0 → structural)
-    xb_shock_ewma = np.zeros_like(w_hab_shock)
-    xb_shock_ewma[0] = np.log(np.maximum(w_hab_shock[0], 1e-8))
-    for t in range(1, len(w_hab_shock)):
-        xb_shock_ewma[t] = (DELTA_HAB * xb_shock_ewma[t - 1]
-                            + (1.0 - DELTA_HAB)
-                            * np.log(np.maximum(w_hab_shock[t - 1], 1e-8)))
+    # Use log-quantities (lq_shock) consistently with training.
     q_prev_shock = np.roll(lq_shock, 1, axis=0); q_prev_shock[0] = lq_shock[0]
+    xb_shock_ewma = np.empty_like(lq_shock)
+    xb_shock_ewma[0] = lq_shock[0]
+    for t in range(1, len(lq_shock)):
+        xb_shock_ewma[t] = (DELTA_HAB * xb_shock_ewma[t - 1]
+                            + (1.0 - DELTA_HAB) * lq_shock[t - 1])
 
     # ── Shared KW bundle ───────────────────────────────────────────────────────
     KW = dict(
@@ -260,6 +264,7 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
         nds_hab=nds_hab,   xbar_hab=xbar_hat,
         nds_cf=nds_cf_m,
         nds_hab_cf=nds_hab_cf_m,
+        consumer=habit_consumer,
         device=DEVICE,
     )
 
@@ -288,18 +293,77 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
     avg_p   = p_pre.mean(0)
     p0_welf = avg_p / np.array([1.0, 1.2, 1.0])
     p1_welf = avg_p
-    xb_mean = xbar_tr.mean(0)
+
+    # Representative initial habit states for welfare evaluation.
+    #
+    # HabitFormationConsumer.solve_demand initialises its internal xbar as
+    #   xbar = ones(G) * mean_income / (G * mean_price)   [level space, quantities]
+    # at each fresh call inside compute_compensating_variation.  Matching this
+    # state for each neural model ensures a fair like-for-like comparison.
+    #
+    # The two habit models use DIFFERENT representations:
+    # Both habit models now train on EWMA of log-quantities, so use the same
+    # representative initial habit state (log of equal-allocation quantities)
+    # for welfare evaluation.
+    _n_goods    = 3
+    _xbar_level = np.ones(_n_goods) * AVG_Y / (_n_goods * float(np.mean(avg_p)))
+    xb_mean_welfare = np.log(np.maximum(_xbar_level, 1e-8))   # (G,) log-quantities
+
+    # compute_compensating_variation internally calls predict_shares(...,
+    # xbar_hab=xb_1d, **kw).  If "xbar_hab" is already in kw (it is, because
+    # KW bundles xbar_hab=xbar_hat for the RMSE loop), Python raises a
+    # duplicate-keyword TypeError that the except block silently swallows →
+    # all CV values become NaN.  Strip it here so compute_cv manages xbar via
+    # its own xbar_pt parameter.
+    _KW_welf = {k: v for k, v in KW.items() if k not in ("xbar_hab", "q_prev_hab")}
 
     cv = {}
     for nm, sp in MODEL_SPECS:
-        xb_kw = {}
-        if sp == "neural-demand-habit":
-            xb_kw = dict(xbar_pt=xb_mean)
+        xb_kw = dict(xbar_pt=xb_mean_welfare) if "habit" in sp else {}
         try:
             cv[nm] = compute_compensating_variation(sp, p0_welf, p1_welf, AVG_Y,
-                                                    **{**KW, **xb_kw})
+                                                    **{**_KW_welf, **xb_kw})
         except Exception:
             cv[nm] = np.nan
+
+    # ── Welfare by shock (three 10% single-good shocks) ──────────────────────
+    _SHOCK_PCT  = 0.10
+    _avg_p_base = p_pre.mean(0)
+
+    _cv_true_by_g = {}
+    for _g in range(3):
+        _sf = np.ones(3); _sf[_g] = 1.0 + _SHOCK_PCT
+        try:
+            _cv_true_by_g[_g] = compute_compensating_variation(
+                "truth", _avg_p_base, _avg_p_base * _sf, AVG_Y, **_KW_welf)
+        except Exception:
+            _cv_true_by_g[_g] = np.nan
+
+    cv_by_shock_rows = []
+    for nm, sp in MODEL_SPECS:
+        _xb_kw = dict(xbar_pt=xb_mean_welfare) if "habit" in sp else {}
+        _row = {"Model": nm}
+        for _g in range(3):
+            _sf = np.ones(3); _sf[_g] = 1.0 + _SHOCK_PCT
+            try:
+                _cv_g = compute_compensating_variation(
+                    sp, _avg_p_base, _avg_p_base * _sf, AVG_Y,
+                    **{**_KW_welf, **_xb_kw})
+                _ct_g = _cv_true_by_g.get(_g, np.nan)
+                _row[f"CV_g{_g}"] = _cv_g
+                _row[f"CV_err_g{_g}"] = (
+                    100 * abs(_cv_g - _ct_g) / max(abs(_ct_g), 1e-9)
+                    if not np.isnan(_ct_g) else np.nan)
+            except Exception:
+                _row[f"CV_g{_g}"] = np.nan
+                _row[f"CV_err_g{_g}"] = np.nan
+        cv_by_shock_rows.append(_row)
+
+    _gt_row = {"Model": "Ground Truth"}
+    for _g in range(3):
+        _gt_row[f"CV_g{_g}"]     = _cv_true_by_g.get(_g, np.nan)
+        _gt_row[f"CV_err_g{_g}"] = 0.0
+    cv_by_shock_rows.append(_gt_row)
 
     # ── Demand curves (varying p1, good-0 share) ───────────────────────────────
     test_p  = np.tile(p_pre.mean(0), (len(P_GRID), 1))
@@ -315,16 +379,13 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
         lq_sw_t = torch.tensor(lq_sweep, dtype=torch.float32, device=DEVICE)
         xb_sw   = compute_xbar_e2e(d_t2, lq_sw_t, store_ids=None).cpu().numpy()
 
-    # xbar for habit-CF sweep (EWMA at DELTA_HAB)
-    xb_sw_ewma = np.zeros_like(xb_sw)
-    for t in range(len(P_GRID)):
-        if t == 0:
-            xb_sw_ewma[t] = np.log(np.maximum(w_hab.mean(0), 1e-8))
-        else:
-            xb_sw_ewma[t] = (DELTA_HAB * xb_sw_ewma[t - 1]
-                             + (1.0 - DELTA_HAB)
-                             * np.log(np.maximum(w_hab.mean(0), 1e-8)))
+    # xbar for habit-CF sweep: EWMA of log-quantities (consistent with training)
     q_prev_sw = np.roll(lq_sweep, 1, axis=0); q_prev_sw[0] = lq_sweep[0]
+    xb_sw_ewma = np.empty_like(lq_sweep)
+    xb_sw_ewma[0] = lq_sweep[0]
+    for t in range(1, len(P_GRID)):
+        xb_sw_ewma[t] = (DELTA_HAB * xb_sw_ewma[t - 1]
+                         + (1.0 - DELTA_HAB) * lq_sweep[t - 1])
 
     curves = {"Truth": habit_consumer.solve_demand(test_p, fixed_y)[:, 0]}
     for nm, sp in MODEL_SPECS:
@@ -355,6 +416,7 @@ def run_one_seed(seed: int, cfg: dict, verbose: bool = False) -> dict:
     return dict(
         rmse=rmse, kl_scores=kl_scores, reductions=reductions,
         cv=cv,
+        cv_by_shock=pd.DataFrame(cv_by_shock_rows),
         curves=curves,
         curves_all=curves_all,
         delta_hat=delta_hat,
@@ -448,6 +510,20 @@ def aggregate(all_results: list) -> dict:
     id_set_lo  = float(np.nanmean([r["id_set"][0] for r in all_results]))
     id_set_hi  = float(np.nanmean([r["id_set"][1] for r in all_results]))
 
+    # ── Welfare by shock aggregation ───────────────────────────────────────────
+    _wbs_list = [r["cv_by_shock"] for r in all_results
+                 if "cv_by_shock" in r and not r["cv_by_shock"].empty]
+    if _wbs_list:
+        _wbs_val_cols = ["CV_g0", "CV_g1", "CV_g2",
+                         "CV_err_g0", "CV_err_g1", "CV_err_g2"]
+        _combined = pd.concat(_wbs_list, ignore_index=True)
+        _mean_df  = _combined.groupby("Model", sort=False)[_wbs_val_cols].mean().reset_index()
+        _se_df    = _combined.groupby("Model", sort=False)[_wbs_val_cols].sem().reset_index()
+        _se_df.columns = ["Model"] + [f"{c}_se" for c in _wbs_val_cols]
+        cv_by_shock_agg = _mean_df.merge(_se_df, on="Model")
+    else:
+        cv_by_shock_agg = pd.DataFrame()
+
     # ── Aggregate training convergence histories ───────────────────────────────
     train_conv = {
         "Neural Demand (static)":    _agg_training_hist(
@@ -462,6 +538,7 @@ def aggregate(all_results: list) -> dict:
 
     return dict(
         rmse_agg=rmse_agg, kl_agg=kl_agg, red_agg=red_agg, cv_agg=cv_agg,
+        cv_by_shock_agg=cv_by_shock_agg,
         curves_mean=curves_mean, curves_se=curves_se,
         curves_all_mean=curves_all_mean, curves_all_se=curves_all_se,
         kl_prof_mean=kl_stack.mean(0),
@@ -606,6 +683,130 @@ def make_tables(agg: dict, cfg: dict) -> None:
     pd.DataFrame(rows).round(6).to_csv(
         f"{out_dir}/table_habit_advantage.csv", index=False)
     print(f"  Saved: {out_dir}/table_habit_advantage.csv")
+
+    # ── Welfare by shock table (Habit DGP) ────────────────────────────────────
+    cv_by_shock_agg = agg.get("cv_by_shock_agg", pd.DataFrame())
+    if not cv_by_shock_agg.empty:
+        cv_by_shock_agg.round(6).to_csv(
+            f"{out_dir}/table_welfare_habit_by_shock.csv", index=False)
+
+        _MODEL_GROUPS_HAB = [
+            ("Benchmark",        ["Ground Truth"]),
+            ("Traditional Models", ["LA-AIDS", "Logit-IV", "QUAIDS"]),
+            ("Semi-parametric",  ["Series Estm."]),
+            ("Neural Demand",    [
+                "Neural Demand (static)",
+                "Neural Demand (habit)",
+                "Neural Demand (CF)",
+                "Neural Demand (habit, CF)",
+            ]),
+        ]
+        _DISP_HAB = {
+            "Ground Truth":              "Ground Truth",
+            "LA-AIDS":                   "LA-AIDS",
+            "Logit-IV":                  "Logit-IV",
+            "QUAIDS":                    "QUAIDS",
+            "Series Estm.":              "Series Estm.",
+            "Neural Demand (static)":    "Static",
+            "Neural Demand (habit)":     "Habit",
+            "Neural Demand (CF)":        "Static, CF",
+            "Neural Demand (habit, CF)": "Habit, CF",
+        }
+
+        def _cv_cell(val, d=2):
+            if np.isnan(val):
+                return "---"
+            return f"${val:.{d}f}$"
+
+        def _se_cell(se, d=2):
+            if np.isnan(se):
+                return ""
+            return f"$({se:.{d}f})$"
+
+        wbs_lines = [
+            r"\begin{table}[htbp]",
+            r"  \centering",
+            r"  \caption{Compensating Variation --- Simulation (Habit DGP)}",
+            r"  \label{tab:sim_welfare_habit}",
+            r"  \begin{tabular}{llllcc}",
+            r"    \toprule",
+            r"    & \multicolumn{4}{c}{\textbf{Compensating Variation (CV)}} & \textbf{Error vs.} \\",
+            r"    \cmidrule(lr){2-5}",
+            r"    \textbf{Model} & \textbf{Shock $g_0$} & \textbf{Shock $g_1$} & \textbf{Shock $g_2$} & \textbf{Average} & \textbf{Truth (\%)} \\",
+            r"    \midrule",
+        ]
+
+        for group_label, group_models in _MODEL_GROUPS_HAB:
+            wbs_lines.append(
+                rf"    \multicolumn{{2}}{{l}}{{\textit{{{group_label}}}}} & & & & \\"
+            )
+            for mn in group_models:
+                sub = cv_by_shock_agg[cv_by_shock_agg["Model"] == mn]
+                if sub.empty:
+                    continue
+                row  = sub.iloc[0]
+                disp = _DISP_HAB.get(mn, mn)
+
+                cv0 = float(row.get("CV_g0",    np.nan))
+                cv1 = float(row.get("CV_g1",    np.nan))
+                cv2 = float(row.get("CV_g2",    np.nan))
+                se0 = float(row.get("CV_g0_se", np.nan))
+                se1 = float(row.get("CV_g1_se", np.nan))
+                se2 = float(row.get("CV_g2_se", np.nan))
+
+                cv_vals = [v for v in [cv0, cv1, cv2] if not np.isnan(v)]
+                cv_avg  = np.mean(cv_vals) if cv_vals else np.nan
+                se_vals_list = [s for s in [se0, se1, se2] if not np.isnan(s)]
+                se_avg  = (np.sqrt(sum(s**2 for s in se_vals_list)) / len(se_vals_list)
+                           if se_vals_list else np.nan)
+
+                err_vals  = [float(row.get(f"CV_err_g{g}", np.nan)) for g in range(3)]
+                err_valid = [e for e in err_vals if not np.isnan(e)]
+                err_avg   = np.mean(err_valid) if err_valid else np.nan
+
+                err_str = ("---" if mn == "Ground Truth"
+                           else (f"{err_avg:.1f}\\%" if not np.isnan(err_avg) else "---"))
+
+                wbs_lines.append(
+                    f"    {disp} & "
+                    f"{_cv_cell(cv0)} & "
+                    f"{_cv_cell(cv1)} & "
+                    f"{_cv_cell(cv2)} & "
+                    f"{_cv_cell(cv_avg)} & "
+                    f"{err_str} \\\\"
+                )
+                wbs_lines.append(
+                    f"                 & "
+                    f"{_se_cell(se0)} & "
+                    f"{_se_cell(se1)} & "
+                    f"{_se_cell(se2)} & "
+                    f"{_se_cell(se_avg)} & \\\\"
+                )
+            wbs_lines.append(r"    \addlinespace")
+
+        if wbs_lines and wbs_lines[-1] == r"    \addlinespace":
+            wbs_lines.pop()
+
+        wbs_lines += [
+            r"    \bottomrule",
+            r"  \end{tabular}",
+            r"  \begin{tablenotes}",
+            r"    Standard errors are reported in parentheses below the estimates."
+            r" Simulations based on Habit DGP with three 10\% one-good shocks.",
+            r"  \end{tablenotes}",
+            r"\end{table}",
+        ]
+
+        wbs_tex_path = f"{out_dir}/table_welfare_habit_by_shock.tex"
+        with open(wbs_tex_path, "w") as _f:
+            _f.write(
+                "% ============================================================\n"
+                "% Neural Demand — Welfare by Shock — Habit DGP (auto-generated)\n"
+                f"% N_RUNS = {N_RUNS}\n"
+                "% ============================================================\n\n"
+            )
+            _f.write("\n".join(wbs_lines) + "\n")
+        print(f"  Saved habit welfare-by-shock table to {wbs_tex_path}")
 
     # ── LaTeX ──────────────────────────────────────────────────────────────────
     def _c(m, s, d=5):
